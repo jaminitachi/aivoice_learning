@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "NanumSquareNeo";
+  font-weight: 300;
+  src: url("/fonts/NanumSquareNeo-aLt.ttf") format("truetype");
+}
+@font-face {
+  font-family: "NanumSquareNeo";
+  font-weight: 400;
+  src: url("/fonts/NanumSquareNeo-bRg.ttf") format("truetype");
+}
+@font-face {
+  font-family: "NanumSquareNeo";
+  font-weight: 700;
+  src: url("/fonts/NanumSquareNeo-cBd.ttf") format("truetype");
+}
+@font-face {
+  font-family: "NanumSquareNeo";
+  font-weight: 800;
+  src: url("/fonts/NanumSquareNeo-dEb.ttf") format("truetype");
+}
+@font-face {
+  font-family: "NanumSquareNeo";
+  font-weight: 900;
+  src: url("/fonts/NanumSquareNeo-eHv.ttf") format("truetype");
+}
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: #000;
+}
+
+.swiper-button-prev,
+.swiper-button-next {
+  color: white !important;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.swiper:hover .swiper-button-prev,
+.swiper:hover .swiper-button-next {
+  opacity: 1;
+}
+
+.swiper-button-prev::after,
+.swiper-button-next::after {
+  font-size: 24px !important;
+  font-weight: 900;
+}
+
+.swiper-pagination-fraction {
+  position: absolute;
+  bottom: 8px !important;
+  right: 8px !important;
+  left: auto !important;
+  width: auto !important;
+  padding: 4px 10px;
+  background-color: rgba(92, 92, 92, 0.784);
+  border-radius: 9999px;
+  color: white;
+  font-size: 8px;
+  font-weight: 600;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

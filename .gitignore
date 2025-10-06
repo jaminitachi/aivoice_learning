@@ -1,0 +1,81 @@
+# 환경 변수 (API 키 포함!) - 절대 업로드 금지!
+.env
+.env.local
+.env.production
+.env.development
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+.venv
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+
+# Next.js
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+aivoice_beta.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+
+# 생성된 이미지
+generated_images/*.png
+generated_images/*.jpg
+!generated_images/.gitkeep
+
+# 폰트 파일 (용량 큼, 배포 시 별도 처리)
+*.ttf
+*.woff
+*.woff2
+*.otf
+
+# 로그
+*.log
+logs/
+
+# 백업
+*.backup
+*.bak
+
+# 기타
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
