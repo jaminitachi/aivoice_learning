@@ -12,6 +12,7 @@ export const WS_BASE_URL =
 export const API_ENDPOINTS = {
   CHARACTERS: `${API_BASE_URL}/api/characters`,
   CHAT: `${API_BASE_URL}/api/chat`,
+  FEEDBACK: (sessionId: string) => `${API_BASE_URL}/api/feedback/${sessionId}`,
   PRE_REGISTRATION: `${API_BASE_URL}/api/pre-registration`,
   STATISTICS: `${API_BASE_URL}/api/statistics`,
   CHECK_BLOCK: `${API_BASE_URL}/api/check-block`,

@@ -10,6 +10,7 @@ import {
   Clock,
 } from "lucide-react";
 import Link from "next/link";
+import { API_ENDPOINTS } from "@/utils/config";
 
 // --- 타입 정의 ---
 interface GrammarIssue {
@@ -84,20 +85,25 @@ export default function FeedbackPage({ params }: FeedbackPageProps) {
     const fetchFeedback = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(
-          `http://localhost:8000/api/feedback/${sessionId}`
-        );
+        console.log("📊 피드백 요청 시작:", sessionId);
+
+        const response = await fetch(API_ENDPOINTS.FEEDBACK(sessionId));
+        console.log("📊 피드백 응답 상태:", response.status);
 
         if (!response.ok) {
+          const errorText = await response.text();
+          console.error("❌ 피드백 로드 실패:", response.status, errorText);
           throw new Error("피드백을 불러올 수 없습니다.");
         }
 
         const data = await response.json();
+        console.log("✅ 피드백 데이터 수신 완료:", data);
+
         setSessionInfo(data.session_info);
         setFeedback(data.feedback);
         setConversationHistory(data.conversation_history);
       } catch (err) {
-        console.error("피드백 로드 오류:", err);
+        console.error("❌ 피드백 로드 오류:", err);
         setError(err instanceof Error ? err.message : "알 수 없는 오류");
       } finally {
         setIsLoading(false);
