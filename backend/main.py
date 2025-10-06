@@ -637,12 +637,14 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     
                     # DB 업데이트 (fingerprint 저장)
                     try:
-                        db.get_connection().execute(
-                            "UPDATE sessions SET fingerprint = ? WHERE session_id = ?",
+                        conn = db.get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE sessions SET fingerprint = %s WHERE session_id = %s",
                             (fingerprint, session.session_id)
                         )
-                        db.get_connection().commit()
-                        db.get_connection().close()
+                        conn.commit()
+                        conn.close()
                         print(f"✅ Fingerprint DB 업데이트: {fingerprint[:8]}...")
                     except Exception as e:
                         print(f"⚠️ Fingerprint 업데이트 실패: {e}")

@@ -114,7 +114,7 @@ export default function CharacterSelection() {
       } else {
         // 차단되지 않은 경우 WebSocket 대화 페이지로 이동
         console.log("✅ 차단되지 않음 - 대화 페이지로 이동");
-        router.push(`/conversation-ws/${characterId}`);
+        router.push(`/chat/${characterId}`);
       }
     } catch (err) {
       console.error("❌ 차단 체크 오류:", err);

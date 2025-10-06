@@ -280,11 +280,13 @@ class Database:
             where_clause = f"({' OR '.join(conditions)})"
             
             # ✅ character_id 조건 제거 - 모든 캐릭터 포함
+            # 완료된 세션이 1개라도 있으면 차단
             query = f"""
-                SELECT COUNT(*) as count, character_id
+                SELECT session_id, character_id, end_time
                 FROM sessions
                 WHERE {where_clause}
                 AND is_completed = TRUE
+                ORDER BY end_time DESC
                 LIMIT 1
             """
             
@@ -292,13 +294,13 @@ class Database:
             result = cursor.fetchone()
             conn.close()
             
-            completed_count = result["count"] if result else 0
-            completed_character = result["character_id"] if result and completed_count > 0 else None
-            
-            if completed_count > 0:
+            if result:
+                # 완료된 세션이 있으면 차단
+                completed_character = result["character_id"]
                 print(f"🚫 영구 차단: 이미 '{completed_character}' 캐릭터와 대화 완료 - FP: {fingerprint[:8] if fingerprint else 'N/A'}..., IP: {user_ip}")
                 return True
             else:
+                # 완료된 세션이 없으면 허용
                 print(f"✅ 접근 허용: 첫 대화 - FP: {fingerprint[:8] if fingerprint else 'N/A'}..., IP: {user_ip}")
                 return False
                 
