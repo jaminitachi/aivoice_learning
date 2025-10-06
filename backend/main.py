@@ -1,6 +1,7 @@
 import base64
 import asyncio
 import os
+import json
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, WebSocket, WebSocketDisconnect, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -374,7 +375,7 @@ async def get_statistics():
 @app.get("/api/feedback/{session_id}")
 async def get_feedback(session_id: str):
     """
-    세션 ID로 대화 피드백을 생성하여 반환합니다.
+    세션 ID로 대화 피드백을 데이터베이스에서 조회하여 반환합니다.
     
     Args:
         session_id: 대화 세션 ID
@@ -383,54 +384,70 @@ async def get_feedback(session_id: str):
         피드백 데이터 (문법 개선, 자연스러운 표현, 전반적 평가)
     """
     try:
-        # 세션 조회
-        session = session_manager.get_session_by_id(session_id)
+        print(f"\n{'📊'*30}")
+        print(f"📊 피드백 조회 요청: {session_id}")
+        print(f"{'📊'*30}\n")
         
-        if not session:
+        # 데이터베이스에서 세션 조회 (메모리가 아닌 DB에서!)
+        session_data = db.get_session(session_id)
+        
+        if not session_data:
+            print(f"❌ 세션을 찾을 수 없습니다: {session_id}")
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
         
-        if not session.is_completed:
+        if not session_data.get("is_completed"):
+            print(f"❌ 대화가 완료되지 않았습니다: {session_id}")
             raise HTTPException(status_code=400, detail="대화가 아직 완료되지 않았습니다.")
         
-        # 실시간으로 수집된 피드백 사용 (즉시 반환!)
-        print(f"✅ 실시간 수집 피드백 사용 (세션: {session_id})")
-        print(f"  - 피드백 항목: {len(session.feedback_items)}개")
+        print(f"✅ 세션 조회 성공!")
+        print(f"  - 캐릭터: {session_data.get('character_id')}")
+        print(f"  - 턴 수: {session_data.get('turn_count')}")
+        print(f"  - 완료 여부: {session_data.get('is_completed')}")
         
-        # 전반적 평가 - 이미 생성된 것 사용 또는 새로 생성
-        if session.overall_assessment:
-            print(f"✅ 이미 생성된 전반적 평가 사용 (직전 턴에 생성됨)")
-            overall_assessment = session.overall_assessment
-        else:
-            print(f"🔄 전반적 평가 생성 중 (직전 턴에 생성되지 않은 경우)")
-            overall_assessment = await feedback_service.generate_overall_assessment(
-                session.feedback_items
-            )
-            print(f"✅ 전반적 평가 생성 완료!")
+        # DB에 저장된 피드백 데이터 파싱
+        feedback_data_str = session_data.get("feedback_data")
+        conversation_history_str = session_data.get("conversation_history")
         
-        feedback = {
-            "feedback_items": session.feedback_items,
-            "overall_assessment": overall_assessment
-        }
+        if not feedback_data_str:
+            print(f"❌ 피드백 데이터가 없습니다: {session_id}")
+            raise HTTPException(status_code=404, detail="피드백 데이터를 찾을 수 없습니다.")
+        
+        # JSON 문자열을 파이썬 객체로 변환
+        feedback_data = json.loads(feedback_data_str)
+        conversation_history = json.loads(conversation_history_str) if conversation_history_str else []
+        
+        print(f"✅ 피드백 데이터 파싱 성공!")
+        print(f"  - 피드백 항목: {len(feedback_data.get('feedback_items', []))}개")
+        print(f"  - 대화 히스토리: {len(conversation_history)}개 메시지")
+        
+        # 시간 계산
+        start_time = session_data.get("start_time")
+        end_time = session_data.get("end_time")
+        duration_seconds = 0
+        if start_time and end_time:
+            duration_seconds = (end_time - start_time).total_seconds()
         
         # 세션 정보와 함께 반환
         return {
             "session_info": {
-                "session_id": session.session_id,
-                "character_id": session.character_id,
-                "turn_count": session.turn_count,
-                "duration_seconds": session.get_conversation_duration(),
-                "start_time": session.start_time.isoformat(),
-                "end_time": session.end_time.isoformat() if session.end_time else None
+                "session_id": session_data.get("session_id"),
+                "character_id": session_data.get("character_id"),
+                "turn_count": session_data.get("turn_count", 0),
+                "duration_seconds": duration_seconds,
+                "start_time": start_time.isoformat() if start_time else None,
+                "end_time": end_time.isoformat() if end_time else None
             },
-            "feedback": feedback,
-            "conversation_history": session.conversation_history
+            "feedback": feedback_data,
+            "conversation_history": conversation_history
         }
     
     except HTTPException:
         raise
     except Exception as e:
-        print(f"피드백 생성 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"피드백 생성 중 오류가 발생했습니다: {str(e)}")
+        print(f"❌ 피드백 조회 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"피드백 조회 중 오류가 발생했습니다: {str(e)}")
 
 @app.websocket("/ws/chat/{character_id}")
 async def websocket_chat(websocket: WebSocket, character_id: str):
