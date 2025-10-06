@@ -105,6 +105,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
   const [completedSessionId, setCompletedSessionId] = useState<string | null>(
     null
   );
+  const [audioInitialized, setAudioInitialized] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -117,6 +118,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioBuffersRef = useRef<ArrayBuffer[]>([]);
   const isPlayingRef = useRef(false);
+  const audioTimeoutRef = useRef<NodeJS.Timeout | null>(null); // TTS 타임아웃 추적
 
   // 메시지 자동 스크롤
   useEffect(() => {
@@ -137,6 +139,29 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     };
     fetchCharacterInfo();
   }, [characterId]);
+
+  // 🎵 페이지 가시성 변경 감지 (모바일 중요!)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (!document.hidden && audioContextRef.current) {
+        // 사용자가 페이지로 돌아왔을 때 AudioContext 재개
+        if (audioContextRef.current.state === "suspended") {
+          try {
+            await audioContextRef.current.resume();
+            console.log("🎵 페이지 복귀 - AudioContext 재개됨");
+          } catch (error) {
+            console.error("❌ AudioContext 재개 실패:", error);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   // WebSocket 연결 설정
   useEffect(() => {
@@ -210,6 +235,11 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
+      // 타임아웃 정리
+      if (audioTimeoutRef.current) {
+        clearTimeout(audioTimeoutRef.current);
+        audioTimeoutRef.current = null;
+      }
     };
   }, [character, characterId]);
 
@@ -237,9 +267,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         // 초기 메시지 오디오 스트리밍 시작
         console.log("🎵 Init 오디오 스트리밍 시작");
         audioBuffersRef.current = [];
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
-        }
+        // AudioContext는 playAudioStream에서 생성됨
         break;
 
       case "init_audio_chunk":
@@ -305,9 +333,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       case "audio_stream_start":
         // 오디오 스트리밍 시작
         audioBuffersRef.current = [];
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext();
-        }
+        // AudioContext는 playAudioStream에서 생성됨
         break;
 
       case "audio_chunk":
@@ -340,14 +366,65 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     }
   };
 
+  // AudioContext 초기화 및 재개 함수
+  const ensureAudioContext = async () => {
+    if (!audioContextRef.current) {
+      // AudioContext 생성 (모바일 호환성을 위해 webkitAudioContext도 지원)
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContextClass();
+      console.log("🎵 AudioContext 생성됨");
+    }
+
+    // AudioContext가 suspended 상태인 경우 재개 (모바일에서 중요!)
+    if (audioContextRef.current.state === "suspended") {
+      try {
+        await audioContextRef.current.resume();
+        console.log("🎵 AudioContext 재개됨 (suspended → running)");
+      } catch (error) {
+        console.error("❌ AudioContext 재개 실패:", error);
+        throw error;
+      }
+    }
+
+    return audioContextRef.current;
+  };
+
   // 오디오 스트림 재생
   const playAudioStream = async () => {
-    if (!audioContextRef.current || audioBuffersRef.current.length === 0)
+    // 기존 타임아웃 제거
+    if (audioTimeoutRef.current) {
+      clearTimeout(audioTimeoutRef.current);
+      audioTimeoutRef.current = null;
+    }
+
+    if (audioBuffersRef.current.length === 0) {
+      console.warn("⚠️ 재생할 오디오 버퍼가 없습니다");
+      // 버퍼가 없어도 세션 완료 시 모달 표시
+      if (isSessionCompletedRef.current) {
+        console.log("✅ 세션 완료! 모달 표시 (버퍼 없음)");
+        setShowCompletionModal(true);
+      }
       return;
+    }
 
     isPlayingRef.current = true;
 
+    // 🔔 TTS 타임아웃 설정 (30초) - 재생이 너무 오래 걸리면 강제로 완료 처리
+    audioTimeoutRef.current = setTimeout(() => {
+      console.warn("⏰ TTS 재생 타임아웃 (30초)");
+      isPlayingRef.current = false;
+
+      if (isSessionCompletedRef.current) {
+        console.log("✅ 세션 완료! 모달 표시 (타임아웃)");
+        setShowCompletionModal(true);
+      }
+    }, 30000);
+
     try {
+      // AudioContext 확보 및 재개
+      const audioContext = await ensureAudioContext();
+
       const totalLength = audioBuffersRef.current.reduce(
         (acc, arr) => acc + arr.byteLength,
         0
@@ -360,14 +437,20 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         offset += buffer.byteLength;
       }
 
-      const audioBuffer = await audioContextRef.current.decodeAudioData(
-        combined.buffer
-      );
-      const source = audioContextRef.current.createBufferSource();
+      console.log(`🎵 오디오 디코딩 시작 (${totalLength} bytes)`);
+      const audioBuffer = await audioContext.decodeAudioData(combined.buffer);
+
+      const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
+      source.connect(audioContext.destination);
 
       source.onended = () => {
+        // 타임아웃 제거
+        if (audioTimeoutRef.current) {
+          clearTimeout(audioTimeoutRef.current);
+          audioTimeoutRef.current = null;
+        }
+
         isPlayingRef.current = false;
         console.log("🎵 TTS 재생 완료!");
 
@@ -378,10 +461,28 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         }
       };
 
+      console.log("🎵 오디오 재생 시작");
       source.start(0);
     } catch (error) {
-      console.error("오디오 재생 오류:", error);
+      console.error("❌ 오디오 재생 오류:", error);
       isPlayingRef.current = false;
+
+      // 타임아웃 제거
+      if (audioTimeoutRef.current) {
+        clearTimeout(audioTimeoutRef.current);
+        audioTimeoutRef.current = null;
+      }
+
+      // 재생 실패해도 세션 완료 시 모달 표시 (중요!)
+      if (isSessionCompletedRef.current) {
+        console.log("✅ 세션 완료! 모달 표시 (재생 오류 발생)");
+        setShowCompletionModal(true);
+      }
+
+      // 사용자에게 알림
+      alert(
+        "음성 재생에 실패했습니다. 화면을 터치하여 오디오를 활성화해주세요."
+      );
     }
   };
 
@@ -393,6 +494,17 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     }
 
     try {
+      // 🎵 사용자 제스처로 AudioContext 초기화 (모바일 자동재생 정책 대응)
+      if (!audioInitialized) {
+        try {
+          await ensureAudioContext();
+          setAudioInitialized(true);
+          console.log("✅ 사용자 제스처로 AudioContext 초기화됨");
+        } catch (error) {
+          console.warn("⚠️ AudioContext 초기화 실패 (계속 진행):", error);
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
@@ -702,6 +814,11 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
                 ? "처리 중..."
                 : "버튼을 눌러 말하기"}
             </p>
+            {!audioInitialized && turnCount === 0 && (
+              <p className="text-xs text-yellow-400/80 mt-2">
+                💡 모바일에서는 첫 번째 녹음 시 오디오가 활성화됩니다
+              </p>
+            )}
           </div>
         </div>
       </div>
