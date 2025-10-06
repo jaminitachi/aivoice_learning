@@ -101,12 +101,17 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
   const [maxTurns, setMaxTurns] = useState(10);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isSessionCompleted, setIsSessionCompleted] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completedSessionId, setCompletedSessionId] = useState<string | null>(
+    null
+  );
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const isSessionCompletedRef = useRef(false); // closure 문제 방지용 ref
 
   // 오디오 스트리밍 관련
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -170,9 +175,19 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       ws.onclose = () => {
         console.log("WebSocket disconnected");
         setConnectionStatus("disconnected");
+
+        // 세션이 완료된 경우 재연결하지 않음
+        if (isSessionCompletedRef.current) {
+          console.log("✅ 세션 완료됨 - 재연결하지 않음");
+          return;
+        }
+
         // 자동 재연결 (5초 후)
         setTimeout(() => {
-          if (wsRef.current?.readyState !== WebSocket.OPEN) {
+          if (
+            wsRef.current?.readyState !== WebSocket.OPEN &&
+            !isSessionCompletedRef.current
+          ) {
             connectWebSocket();
           }
         }, 5000);
@@ -253,13 +268,14 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         break;
 
       case "session_completed":
+        console.log("📤 session_completed 이벤트 수신!");
         setIsSessionCompleted(true);
-        setSessionId(data.session_id);
-        // 로딩은 audio_stream_end에서 자동으로 꺼짐
-        // 피드백 페이지로 리다이렉트
-        setTimeout(() => {
-          window.location.href = `/feedback/${data.session_id}`;
-        }, 2000);
+        isSessionCompletedRef.current = true; // ref도 업데이트
+        setCompletedSessionId(data.session_id);
+        setIsLoading(false);
+        console.log(
+          "✅ 세션 완료 상태 저장됨. TTS 재생 완료 후 모달 표시 예정"
+        );
         break;
 
       case "stt_result":
@@ -354,6 +370,12 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       source.onended = () => {
         isPlayingRef.current = false;
         console.log("🎵 TTS 재생 완료!");
+
+        // TTS 재생 완료 후 세션이 완료된 경우 모달 표시
+        if (isSessionCompletedRef.current) {
+          console.log("✅ 세션 완료! 모달 표시");
+          setShowCompletionModal(true);
+        }
       };
 
       source.start(0);
@@ -521,31 +543,6 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
 
         {/* 대화 영역 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-purple-500/50 scrollbar-track-transparent">
-          {/* 세션 완료 메시지 */}
-          {isSessionCompleted && (
-            <div className="backdrop-blur-lg bg-green-500/20 border-2 border-green-500 rounded-2xl p-6 text-center animate-fadeInUp">
-              <h2 className="text-2xl font-bold text-green-300 mb-2">
-                🎉 학습 완료!
-              </h2>
-              <p className="text-green-200 mb-4">
-                10턴의 대화를 완료했습니다!
-                <br />
-                잠시 후 피드백 페이지로 이동합니다...
-              </p>
-              <div className="flex items-center justify-center gap-2">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-bounce"></div>
-                <div
-                  className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
-                  style={{ animationDelay: "0.1s" }}
-                ></div>
-                <div
-                  className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
-                  style={{ animationDelay: "0.2s" }}
-                ></div>
-              </div>
-            </div>
-          )}
-
           {/* 초기 로딩 중일 때 캐릭터 이미지 먼저 표시 */}
           {messages.length === 0 && connectionStatus === "connecting" && (
             <div className="flex flex-col items-start animate-fadeInUp">
@@ -708,6 +705,63 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
           </div>
         </div>
       </div>
+
+      {/* 학습 완료 모달 */}
+      {showCompletionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="relative w-full max-w-md mx-4 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl border border-purple-400/30 shadow-2xl p-8 animate-fadeInUp">
+            {/* 배경 글로우 효과 */}
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-3xl blur-2xl opacity-50"></div>
+
+            <div className="relative">
+              {/* 체크 아이콘 */}
+              <div className="flex justify-center mb-6">
+                <div className="relative">
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-green-500/50">
+                    <svg
+                      className="w-14 h-14 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  </div>
+                  {/* 펄스 애니메이션 */}
+                  <div className="absolute inset-0 rounded-full bg-green-400/50 animate-ping"></div>
+                </div>
+              </div>
+
+              {/* 텍스트 */}
+              <h2 className="text-3xl font-bold text-center mb-3 bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+                학습 완료!
+              </h2>
+              <p className="text-center text-purple-200 mb-8">
+                10턴의 대화를 완료했습니다!
+                <br />
+                지금 바로 피드백을 확인하세요.
+              </p>
+
+              {/* 확인 버튼 */}
+              <button
+                onClick={() => {
+                  if (completedSessionId) {
+                    window.location.href = `/feedback/${completedSessionId}`;
+                  }
+                }}
+                className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold rounded-2xl shadow-lg shadow-purple-500/50 transition-all duration-300 hover:scale-105 active:scale-95"
+              >
+                피드백 확인하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         @keyframes fadeInUp {

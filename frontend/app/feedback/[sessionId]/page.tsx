@@ -124,11 +124,19 @@ export default function FeedbackPage({ params }: FeedbackPageProps) {
   // 로딩 중
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 text-lg">피드백을 생성하는 중...</p>
-          <p className="text-gray-500 text-sm mt-2">잠시만 기다려주세요</p>
+      <div className="relative bg-black min-h-screen">
+        {/* 배경 패턴 효과 */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent"></div>
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-40"></div>
+
+        <div className="relative w-full max-w-[390px] mx-auto min-h-screen flex items-center justify-center text-white bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-white text-lg font-semibold">
+              피드백을 생성하는 중...
+            </p>
+            <p className="text-purple-300 text-sm mt-2">잠시만 기다려주세요</p>
+          </div>
         </div>
       </div>
     );
@@ -137,20 +145,26 @@ export default function FeedbackPage({ params }: FeedbackPageProps) {
   // 에러 발생
   if (error || !sessionInfo || !feedback) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white">
-        <div className="text-center">
-          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">오류 발생</h2>
-          <p className="text-gray-600 mb-6">
-            {error || "피드백을 불러올 수 없습니다."}
-          </p>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            홈으로 돌아가기
-          </Link>
+      <div className="relative bg-black min-h-screen">
+        {/* 배경 패턴 효과 */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent"></div>
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-40"></div>
+
+        <div className="relative w-full max-w-[390px] mx-auto min-h-screen flex items-center justify-center text-white bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900">
+          <div className="text-center px-4">
+            <XCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-white mb-2">오류 발생</h2>
+            <p className="text-purple-200 mb-6">
+              {error || "피드백을 불러올 수 없습니다."}
+            </p>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-2xl font-bold shadow-lg shadow-purple-500/50 transition-all duration-300 hover:scale-105"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              홈으로 돌아가기
+            </Link>
+          </div>
         </div>
       </div>
     );
