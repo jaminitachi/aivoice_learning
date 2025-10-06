@@ -214,12 +214,20 @@ async def check_block(block_request: BlockCheckRequest, request: Request):
     # 실제 클라이언트 IP 추출
     client_ip = request.client.host if request.client else None
     
+    print(f"\n{'🔍'*30}")
+    print(f"🔍 [차단 체크 API] 요청 수신")
+    print(f"  - IP: {client_ip}")
+    print(f"  - Fingerprint: {block_request.fingerprint[:16]}...")
+    print(f"{'🔍'*30}\n")
+    
     is_blocked = db.check_user_ever_completed(
         user_ip=client_ip,
         fingerprint=block_request.fingerprint
     )
     
-    print(f"🔍 차단 체크: IP={client_ip}, FP={block_request.fingerprint[:8]}..., 차단={is_blocked}")
+    print(f"\n{'✅' if not is_blocked else '🚫'}{'='*30}")
+    print(f"{'✅ 접근 허용' if not is_blocked else '🚫 접근 차단'}")
+    print(f"{'='*30}\n")
     
     return {
         "is_blocked": is_blocked,
