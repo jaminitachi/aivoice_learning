@@ -116,7 +116,7 @@ export default function CharacterProfilePage({ params }: ProfilePageProps) {
 
         {/* 하단 고정 버튼 */}
         <footer className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black via-black/80 to-transparent p-4">
-          <Link href={`/conversation/${characterId}`}>
+          <Link href={`/conversation-ws/${characterId}`}>
             <button className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold p-3 rounded-lg transition-colors">
               회화 시작하기
             </button>

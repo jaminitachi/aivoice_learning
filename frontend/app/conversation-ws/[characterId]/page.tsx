@@ -5,7 +5,6 @@ import { Mic, StopCircle, User, ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { API_ENDPOINTS, WS_ENDPOINTS } from "@/utils/config";
-import router from "next/router";
 
 // --- Fingerprint 생성 함수 ---
 async function generateFingerprint(): Promise<string> {
@@ -113,10 +112,6 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioBuffersRef = useRef<ArrayBuffer[]>([]);
   const isPlayingRef = useRef(false);
-
-  // Init 오디오 전용 버퍼
-  const initAudioBuffersRef = useRef<ArrayBuffer[]>([]);
-  const isPlayingInitRef = useRef(false);
 
   // 메시지 자동 스크롤
   useEffect(() => {
@@ -226,37 +221,27 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       case "init_audio_stream_start":
         // 초기 메시지 오디오 스트리밍 시작
         console.log("🎵 Init 오디오 스트리밍 시작");
-        initAudioBuffersRef.current = [];
-        isPlayingInitRef.current = false;
+        audioBuffersRef.current = [];
         if (!audioContextRef.current) {
           audioContextRef.current = new AudioContext();
         }
         break;
 
       case "init_audio_chunk":
-        // 초기 메시지 오디오 청크 수신 및 재생
+        // 초기 메시지 오디오 청크 수신 및 버퍼에 저장
         const initChunkData = atob(data.data);
         const initChunkArray = new Uint8Array(initChunkData.length);
         for (let i = 0; i < initChunkData.length; i++) {
           initChunkArray[i] = initChunkData.charCodeAt(i);
         }
-        initAudioBuffersRef.current.push(initChunkArray.buffer);
-        console.log(
-          `🎵 Init 오디오 청크 수신 (${initAudioBuffersRef.current.length}개)`
-        );
-
-        // 첫 청크부터 즉시 재생 시작
-        if (
-          !isPlayingInitRef.current &&
-          initAudioBuffersRef.current.length > 0
-        ) {
-          playInitAudioStream();
-        }
+        audioBuffersRef.current.push(initChunkArray.buffer);
         break;
 
       case "init_audio_stream_end":
-        // 초기 메시지 오디오 스트리밍 완료
-        console.log("✅ 초기 메시지 음성 스트리밍 완료");
+        // 초기 메시지 오디오 재생
+        if (audioBuffersRef.current.length > 0) {
+          playAudioStream();
+        }
         break;
 
       case "status":
@@ -310,32 +295,21 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         break;
 
       case "audio_chunk":
-        // 오디오 청크 수신 및 재생
-        const chunkData = atob(data.data); // base64 디코딩
+        // 오디오 청크 수신 및 버퍼에 저장
+        const chunkData = atob(data.data);
         const chunkArray = new Uint8Array(chunkData.length);
         for (let i = 0; i < chunkData.length; i++) {
           chunkArray[i] = chunkData.charCodeAt(i);
         }
         audioBuffersRef.current.push(chunkArray.buffer);
-
-        // 첫 청크부터 즉시 재생 시작
-        if (!isPlayingRef.current && audioBuffersRef.current.length > 0) {
-          playAudioStream();
-        }
         break;
 
       case "audio_stream_end":
+        // 모든 청크를 받은 후 한 번에 재생
         setIsLoading(false);
-        setStatusMessage("");
-        break;
-
-      case "blocked":
-        // 차단된 경우 - 깨끗한 알림창과 홈으로 이동
-        console.warn("🚫 사용자 차단:", data.message);
-        setStatusMessage("");
-        setIsLoading(false);
-        alert(data.message);
-        router.push("/");
+        if (audioBuffersRef.current.length > 0) {
+          playAudioStream();
+        }
         break;
 
       case "error":
@@ -350,7 +324,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     }
   };
 
-  // 오디오 스트림 재생 (일반 메시지용)
+  // 오디오 스트림 재생
   const playAudioStream = async () => {
     if (!audioContextRef.current || audioBuffersRef.current.length === 0)
       return;
@@ -358,7 +332,6 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     isPlayingRef.current = true;
 
     try {
-      // 모든 청크를 하나로 합치기
       const totalLength = audioBuffersRef.current.reduce(
         (acc, arr) => acc + arr.byteLength,
         0
@@ -371,7 +344,6 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         offset += buffer.byteLength;
       }
 
-      // AudioContext로 디코딩 및 재생
       const audioBuffer = await audioContextRef.current.decodeAudioData(
         combined.buffer
       );
@@ -381,61 +353,13 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
 
       source.onended = () => {
         isPlayingRef.current = false;
+        console.log("🎵 TTS 재생 완료!");
       };
 
       source.start(0);
     } catch (error) {
       console.error("오디오 재생 오류:", error);
       isPlayingRef.current = false;
-    }
-  };
-
-  // Init 오디오 스트림 재생 (초기 메시지용)
-  const playInitAudioStream = async () => {
-    if (!audioContextRef.current || initAudioBuffersRef.current.length === 0) {
-      console.log("⚠️ Init 오디오 재생 불가: AudioContext 또는 버퍼 없음");
-      return;
-    }
-
-    isPlayingInitRef.current = true;
-    console.log(
-      `🎵 Init 오디오 재생 시작 (청크 ${initAudioBuffersRef.current.length}개)`
-    );
-
-    try {
-      // 모든 청크를 하나로 합치기
-      const totalLength = initAudioBuffersRef.current.reduce(
-        (acc, arr) => acc + arr.byteLength,
-        0
-      );
-      const combined = new Uint8Array(totalLength);
-      let offset = 0;
-
-      for (const buffer of initAudioBuffersRef.current) {
-        combined.set(new Uint8Array(buffer), offset);
-        offset += buffer.byteLength;
-      }
-
-      console.log(`🎵 Init 오디오 디코딩 중 (${totalLength} bytes)...`);
-
-      // AudioContext로 디코딩 및 재생
-      const audioBuffer = await audioContextRef.current.decodeAudioData(
-        combined.buffer
-      );
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-
-      source.onended = () => {
-        isPlayingInitRef.current = false;
-        console.log("✅ Init 오디오 재생 완료");
-      };
-
-      source.start(0);
-      console.log("🎵 Init 오디오 재생 중...");
-    } catch (error) {
-      console.error("❌ Init 오디오 재생 오류:", error);
-      isPlayingInitRef.current = false;
     }
   };
 
@@ -525,201 +449,314 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
 
   if (!character) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white">
-        <p className="text-gray-600">캐릭터 정보를 불러오는 중...</p>
+      <div className="min-h-screen flex items-center justify-center bg-black">
+        <p className="text-white">캐릭터 정보를 불러오는 중...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col">
-      {/* 헤더 */}
-      <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <Link
-            href="/"
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            <ChevronLeft className="w-5 h-5" />
-            <span className="font-medium">돌아가기</span>
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900">
-            {character.name}와의 대화
-          </h1>
-          <div
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              connectionStatus === "connected"
-                ? "bg-green-100 text-green-700"
-                : connectionStatus === "connecting"
-                ? "bg-yellow-100 text-yellow-700"
-                : "bg-red-100 text-red-700"
-            }`}
-          >
-            {connectionStatus === "connected"
-              ? "연결됨"
-              : connectionStatus === "connecting"
-              ? "연결 중..."
-              : "연결 끊김"}
-          </div>
-        </div>
+    <div className="relative bg-black">
+      {/* 배경 패턴 효과 */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/20 via-transparent to-transparent"></div>
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-40"></div>
 
-        {/* 턴 카운터 */}
-        <div className="mt-3 flex items-center justify-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="text-sm text-gray-600">대화 진행:</div>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: maxTurns }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className={`w-3 h-3 rounded-full ${
-                    idx < turnCount ? "bg-blue-500" : "bg-gray-300"
-                  }`}
-                  title={`${idx + 1}턴`}
-                />
-              ))}
-            </div>
-            <div className="text-sm font-semibold text-gray-900">
-              {turnCount}/{maxTurns}
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* 대화 영역 */}
-      <div className="flex-1 overflow-y-auto px-6 py-8 space-y-6">
-        {/* 세션 완료 메시지 */}
-        {isSessionCompleted && (
-          <div className="bg-green-50 border-2 border-green-500 rounded-xl p-6 text-center mb-6 animate-pulse">
-            <h2 className="text-xl font-bold text-green-800 mb-2">
-              🎉 대화가 완료되었습니다!
-            </h2>
-            <p className="text-green-700 mb-4">
-              잠시 후 피드백 페이지로 이동합니다...
-            </p>
-            <div className="flex items-center justify-center gap-2">
-              <div className="w-2 h-2 bg-green-600 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-green-600 rounded-full animate-bounce delay-75"></div>
-              <div className="w-2 h-2 bg-green-600 rounded-full animate-bounce delay-150"></div>
-            </div>
-          </div>
-        )}
-
-        {messages.length === 0 && !isLoading && !isSessionCompleted && (
-          <div className="text-center text-gray-500 mt-12">
-            <p className="text-lg">마이크 버튼을 눌러 대화를 시작하세요</p>
-            <p className="text-sm mt-2">
-              10번의 대화 후 피드백을 받을 수 있습니다
-            </p>
-          </div>
-        )}
-
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex gap-4 ${
-              msg.speaker === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
-            {msg.speaker === "ai" && (
-              <div className="flex-shrink-0">
-                {msg.imageUrl ? (
-                  <Image
-                    src={msg.imageUrl}
-                    alt={character.name}
-                    width={48}
-                    height={48}
-                    className="rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-semibold">
-                    AI
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div
-              className={`max-w-md px-4 py-3 rounded-2xl shadow-sm ${
-                msg.speaker === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-white text-gray-800 border border-gray-200"
-              }`}
+      <div className="relative w-full max-w-[390px] mx-auto flex rounded-3xl flex-col h-screen text-white bg-gradient-to-br from-slate-950 via-purple-950 to-slate-900">
+        {/* 헤더 - 글래스모피즘 효과 */}
+        <header className="relative backdrop-blur-xl bg-white/5 border-b border-white/10 shadow-lg">
+          <div className="relative flex items-center justify-center pt-2 pb-2 px-4">
+            <Link
+              href="/"
+              className="absolute left-4 p-2 rounded-full hover:bg-white/10 transition-all duration-300 hover:scale-110"
             >
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                {msg.text}
-              </p>
-            </div>
-
-            {msg.speaker === "user" && (
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
-                  <User className="w-6 h-6 text-white" />
+              <ChevronLeft className="w-6 h-6" />
+            </Link>
+            {character && (
+              <div className="flex items-center">
+                <div className="relative w-12 h-12 rounded-full overflow-hidden mr-3 ring-2 ring-purple-400/50">
+                  <Image
+                    src={character.imageUrl}
+                    alt={character.name}
+                    fill
+                    style={{ objectFit: "cover" }}
+                    unoptimized
+                  />
+                  {/* 온라인 상태 인디케이터 */}
+                  <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-400 rounded-full border-2 border-slate-900"></div>
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+                    {character.name}
+                  </h1>
+                  <p className="text-xs text-purple-300">온라인</p>
                 </div>
               </div>
             )}
           </div>
-        ))}
 
-        {isLoading && (
-          <div className="flex gap-4 justify-start">
-            <div className="flex-shrink-0">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-semibold">
-                AI
+          {/* 턴 카운터 */}
+          <div className="pb-2 flex flex-col items-center justify-center gap-1">
+            <div className="flex items-center gap-2">
+              <div className="text-sm text-purple-300">대화 진행:</div>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: maxTurns }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`w-3 h-3 rounded-full ${
+                      idx < turnCount ? "bg-purple-500" : "bg-gray-700"
+                    }`}
+                    title={`${idx + 1}턴`}
+                  />
+                ))}
+              </div>
+              <div className="text-sm font-semibold text-white">
+                {turnCount}/{maxTurns}
               </div>
             </div>
-            <div className="max-w-md px-4 py-3 rounded-2xl bg-white border border-gray-200 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-75"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-150"></div>
+            <p className="text-[10px] text-purple-300/60">
+              10번 대화 후 피드백을 받을 수 있습니다!
+            </p>
+          </div>
+        </header>
+
+        {/* 대화 영역 */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-purple-500/50 scrollbar-track-transparent">
+          {/* 세션 완료 메시지 */}
+          {isSessionCompleted && (
+            <div className="backdrop-blur-lg bg-green-500/20 border-2 border-green-500 rounded-2xl p-6 text-center animate-fadeInUp">
+              <h2 className="text-2xl font-bold text-green-300 mb-2">
+                🎉 학습 완료!
+              </h2>
+              <p className="text-green-200 mb-4">
+                10턴의 대화를 완료했습니다!
+                <br />
+                잠시 후 피드백 페이지로 이동합니다...
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-bounce"></div>
+                <div
+                  className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-green-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {/* 초기 로딩 중일 때 캐릭터 이미지 먼저 표시 */}
+          {messages.length === 0 && connectionStatus === "connecting" && (
+            <div className="flex flex-col items-start animate-fadeInUp">
+              <div className="relative w-full max-w-[320px] h-[400px] rounded-3xl overflow-hidden mb-3 shadow-2xl">
+                <Image
+                  src={character.imageUrl}
+                  alt={character.name}
+                  fill
+                  style={{ objectFit: "cover" }}
+                  unoptimized
+                />
+              </div>
+              <div className="backdrop-blur-lg bg-white/10 border border-white/20 rounded-2xl p-4 max-w-[320px] shadow-xl">
+                <div className="flex gap-2 items-center">
+                  <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></span>
+                  <span
+                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.1s" }}
+                  ></span>
+                  <span
+                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  ></span>
+                  <p className="ml-2 text-sm text-purple-300">연결 중...</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`animate-fadeInUp ${
+                msg.speaker === "user"
+                  ? "flex justify-end"
+                  : "flex flex-col items-start"
+              }`}
+              style={{ animationDelay: `${idx * 0.1}s` }}
+            >
+              {msg.speaker === "ai" ? (
+                <>
+                  {/* AI 메시지: 큰 이미지 위에 메시지 */}
+                  {msg.imageUrl && (
+                    <div className="relative w-full max-w-[320px] h-[400px] rounded-3xl overflow-hidden mb-3 shadow-2xl">
+                      <Image
+                        src={msg.imageUrl}
+                        alt={character?.name || "Character"}
+                        fill
+                        style={{ objectFit: "cover" }}
+                        unoptimized
+                      />
+                    </div>
+                  )}
+                  <div className="backdrop-blur-lg bg-white/10 border border-white/20 rounded-2xl p-4 max-w-[320px] shadow-xl transition-all duration-300 hover:scale-[1.02]">
+                    <p className="leading-relaxed">{msg.text}</p>
+                  </div>
+                </>
+              ) : (
+                /* 사용자 메시지 */
+                <div className="flex items-start gap-3">
+                  <div className="bg-gradient-to-br from-purple-600 to-blue-600 text-white rounded-2xl p-4 max-w-[280px] shadow-xl transition-all duration-300 hover:scale-[1.02]">
+                    <p className="leading-relaxed">{msg.text}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full flex-shrink-0 bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center ring-2 ring-green-400/30">
+                    <User className="w-6 h-6 text-white" />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {isLoading && (
+            <div className="flex flex-col items-start animate-fadeInUp">
+              <div className="backdrop-blur-lg bg-white/10 border border-white/20 rounded-2xl p-4 max-w-md flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></span>
+                  <span
+                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.1s" }}
+                  ></span>
+                  <span
+                    className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  ></span>
+                </div>
                 {statusMessage && (
-                  <p className="ml-2 text-sm text-gray-600">{statusMessage}</p>
+                  <p className="ml-2 text-sm text-purple-300">
+                    {statusMessage}
+                  </p>
                 )}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 녹음 버튼 */}
-      <div className="bg-white border-t border-gray-200 px-6 py-6">
-        <div className="max-w-2xl mx-auto flex justify-center">
-          <button
-            onClick={isRecording ? stopRecording : startRecording}
-            disabled={
-              isLoading ||
-              connectionStatus !== "connected" ||
-              isSessionCompleted
-            }
-            className={`group relative w-20 h-20 rounded-full flex items-center justify-center transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
-              isRecording
-                ? "bg-red-500 shadow-lg shadow-red-500/50"
-                : "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/50"
-            }`}
-          >
-            {isRecording ? (
-              <StopCircle className="w-10 h-10 text-white" />
-            ) : (
-              <Mic className="w-10 h-10 text-white" />
-            )}
-
-            {isRecording && (
-              <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full animate-ping"></span>
-            )}
-          </button>
+          <div ref={messagesEndRef} />
         </div>
-        <p className="text-center text-sm text-gray-500 mt-4">
-          {isSessionCompleted
-            ? "대화가 완료되었습니다"
-            : isRecording
-            ? "녹음 중... 버튼을 다시 눌러 전송하세요"
-            : connectionStatus === "connected"
-            ? "마이크 버튼을 눌러 말하기"
-            : "WebSocket 연결 대기 중..."}
-        </p>
+
+        {/* 녹음 버튼 - 업그레이드된 디자인 */}
+        <div className="relative backdrop-blur-xl bg-white/5 border-t border-white/10 p-4">
+          <div className="flex justify-center items-center">
+            {/* 녹음 중 웨이브 애니메이션 */}
+            {isRecording && (
+              <>
+                <div className="absolute w-32 h-32 rounded-full bg-red-500/30 animate-ping"></div>
+                <div className="absolute w-28 h-28 rounded-full bg-red-500/20 animate-pulse"></div>
+              </>
+            )}
+
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={
+                isLoading ||
+                connectionStatus !== "connected" ||
+                isSessionCompleted
+              }
+              className={`relative z-10 rounded-full p-4 transition-all duration-500 ease-out disabled:opacity-50 disabled:cursor-not-allowed shadow-2xl ${
+                isRecording
+                  ? "bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 scale-110 animate-pulse"
+                  : "bg-gradient-to-br from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 hover:scale-110"
+              } ${
+                !isLoading && !isRecording ? "hover:shadow-purple-500/50" : ""
+              }`}
+            >
+              {/* 버튼 내부 글로우 효과 */}
+              <div className="absolute inset-0 rounded-full bg-gradient-to-r from-white/20 to-transparent opacity-50"></div>
+
+              {isRecording ? (
+                <StopCircle size={18} className="relative animate-pulse" />
+              ) : (
+                <Mic size={20} className="relative" />
+              )}
+            </button>
+
+            {/* 녹음 중 시각적 인디케이터 */}
+            {isRecording && (
+              <div className="absolute -bottom-2 flex gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-1 bg-red-400 rounded-full animate-soundWave"
+                    style={{
+                      height: "20px",
+                      animationDelay: `${i * 0.1}s`,
+                    }}
+                  ></div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 힌트 텍스트 */}
+          <div className="mt-4 text-center">
+            <p className="text-sm text-purple-300/80">
+              {isRecording
+                ? "녹음 중... 버튼을 눌러 종료"
+                : isLoading
+                ? "처리 중..."
+                : "버튼을 눌러 말하기"}
+            </p>
+          </div>
+        </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes soundWave {
+          0%,
+          100% {
+            height: 8px;
+          }
+          50% {
+            height: 24px;
+          }
+        }
+
+        .animate-fadeInUp {
+          animation: fadeInUp 0.5s ease-out forwards;
+        }
+
+        .animate-soundWave {
+          animation: soundWave 0.6s ease-in-out infinite;
+        }
+
+        /* 스크롤바 스타일링 */
+        .scrollbar-thin::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+          background: rgba(168, 85, 247, 0.5);
+          border-radius: 3px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+          background: rgba(168, 85, 247, 0.7);
+        }
+      `}</style>
     </div>
   );
 }

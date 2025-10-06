@@ -111,13 +111,13 @@ export default function CharacterSelection() {
         // 차단된 경우 알림 표시
         alert(data.message);
       } else {
-        // 차단되지 않은 경우 대화 페이지로 이동
-        router.push(`/conversation-ws/${characterId}`);
+        // 차단되지 않은 경우 프로필 페이지로 이동
+        router.push(`/chat/${characterId}`);
       }
     } catch (err) {
       console.error("차단 체크 오류:", err);
       // 오류 발생 시 일단 이동 (안전 장치)
-      router.push(`/conversation-ws/${characterId}`);
+      router.push(`/chat/${characterId}`);
     }
   };
 
