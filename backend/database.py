@@ -1,33 +1,36 @@
 """
 데이터베이스 관리 모듈
 
-SQLite를 사용하여 세션 추적 및 사전 등록 정보를 저장합니다.
+PostgreSQL을 사용하여 세션 추적 및 사전 등록 정보를 저장합니다.
 """
 
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime
 from typing import Optional, List, Dict
-from pathlib import Path
 import json
+import os
 
 
 class Database:
-    """SQLite 데이터베이스 관리 클래스"""
+    """PostgreSQL 데이터베이스 관리 클래스"""
     
-    def __init__(self, db_path: str = "aivoice_beta.db"):
+    def __init__(self):
         """
         데이터베이스 초기화
         
-        Args:
-            db_path: 데이터베이스 파일 경로
+        환경변수 DATABASE_URL을 사용하여 Railway PostgreSQL에 연결합니다.
         """
-        self.db_path = Path(__file__).parent / db_path
+        self.database_url = os.getenv("DATABASE_URL")
+        if not self.database_url:
+            raise ValueError("❌ DATABASE_URL 환경변수가 설정되지 않았습니다!")
+        
+        print(f"✅ PostgreSQL 연결 준비: {self.database_url[:30]}...")
         self.init_database()
     
     def get_connection(self):
         """데이터베이스 연결 생성"""
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row  # 딕셔너리 형태로 결과 반환
+        conn = psycopg2.connect(self.database_url)
         return conn
     
     def init_database(self):
@@ -43,8 +46,8 @@ class Database:
                 start_time TIMESTAMP NOT NULL,
                 end_time TIMESTAMP,
                 turn_count INTEGER DEFAULT 0,
-                is_completed BOOLEAN DEFAULT 0,
-                is_blocked BOOLEAN DEFAULT 0,
+                is_completed BOOLEAN DEFAULT FALSE,
+                is_blocked BOOLEAN DEFAULT FALSE,
                 conversation_history TEXT,
                 feedback_data TEXT,
                 user_ip TEXT,
@@ -57,13 +60,13 @@ class Database:
         # 사전 등록 테이블
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pre_registrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 session_id TEXT,
                 name TEXT NOT NULL,
                 email TEXT NOT NULL,
                 phone TEXT,
-                notify_email BOOLEAN DEFAULT 1,
-                notify_sms BOOLEAN DEFAULT 0,
+                notify_email BOOLEAN DEFAULT TRUE,
+                notify_sms BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (session_id) REFERENCES sessions (session_id)
             )
@@ -72,7 +75,7 @@ class Database:
         # 사용자 활동 로그 테이블
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS activity_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 session_id TEXT NOT NULL,
                 activity_type TEXT NOT NULL,
                 activity_data TEXT,
@@ -83,7 +86,7 @@ class Database:
         
         conn.commit()
         conn.close()
-        print(f"✅ 데이터베이스 초기화 완료: {self.db_path}")
+        print(f"✅ PostgreSQL 데이터베이스 초기화 완료")
     
     # --- 세션 관련 메서드 ---
     
@@ -115,7 +118,7 @@ class Database:
             cursor.execute("""
                 INSERT INTO sessions 
                 (session_id, character_id, start_time, user_ip, user_agent, fingerprint)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (session_id, character_id, datetime.now(), user_ip, user_agent, fingerprint))
             
             conn.commit()
@@ -144,8 +147,8 @@ class Database:
             
             cursor.execute("""
                 UPDATE sessions 
-                SET turn_count = ?
-                WHERE session_id = ?
+                SET turn_count = %s
+                WHERE session_id = %s
             """, (turn_count, session_id))
             
             conn.commit()
@@ -178,12 +181,12 @@ class Database:
             
             cursor.execute("""
                 UPDATE sessions 
-                SET end_time = ?,
-                    is_completed = 1,
-                    is_blocked = 1,
-                    conversation_history = ?,
-                    feedback_data = ?
-                WHERE session_id = ?
+                SET end_time = %s,
+                    is_completed = TRUE,
+                    is_blocked = TRUE,
+                    conversation_history = %s,
+                    feedback_data = %s
+                WHERE session_id = %s
             """, (
                 datetime.now(),
                 json.dumps(conversation_history, ensure_ascii=False),
@@ -212,12 +215,12 @@ class Database:
         """
         try:
             conn = self.get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             cursor.execute("""
                 SELECT is_blocked 
                 FROM sessions 
-                WHERE session_id = ?
+                WHERE session_id = %s
             """, (session_id,))
             
             result = cursor.fetchone()
@@ -247,13 +250,13 @@ class Database:
         
         설명:
             - fingerprint OR user_ip 중 하나라도 일치하면 차단
-            - is_completed = 1인 세션만 체크
+            - is_completed = TRUE인 세션만 체크
             - 캐릭터 구분 없이 아무 캐릭터나 1번이라도 대화했으면 전체 차단
             - 영구 차단 (날짜 제한 없음)
         """
         try:
             conn = self.get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # fingerprint와 user_ip 둘 다 없으면 체크 불가 (허용)
             if not fingerprint and not user_ip:
@@ -266,11 +269,11 @@ class Database:
             params = []
             
             if fingerprint:
-                conditions.append("fingerprint = ?")
+                conditions.append("fingerprint = %s")
                 params.append(fingerprint)
             
             if user_ip:
-                conditions.append("user_ip = ?")
+                conditions.append("user_ip = %s")
                 params.append(user_ip)
             
             # OR 조건으로 연결
@@ -281,7 +284,7 @@ class Database:
                 SELECT COUNT(*) as count, character_id
                 FROM sessions
                 WHERE {where_clause}
-                AND is_completed = 1
+                AND is_completed = TRUE
                 LIMIT 1
             """
             
@@ -316,11 +319,11 @@ class Database:
         """
         try:
             conn = self.get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             cursor.execute("""
                 SELECT * FROM sessions 
-                WHERE session_id = ?
+                WHERE session_id = %s
             """, (session_id,))
             
             result = cursor.fetchone()
@@ -365,7 +368,7 @@ class Database:
             cursor.execute("""
                 INSERT INTO pre_registrations 
                 (session_id, name, email, phone, notify_email, notify_sms)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             """, (session_id, name, email, phone, notify_email, notify_sms))
             
             conn.commit()
@@ -386,7 +389,7 @@ class Database:
         """
         try:
             conn = self.get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             cursor.execute("""
                 SELECT pr.*, s.character_id, s.turn_count
@@ -429,7 +432,7 @@ class Database:
             cursor.execute("""
                 INSERT INTO activity_logs 
                 (session_id, activity_type, activity_data)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
             """, (
                 session_id,
                 activity_type,
@@ -454,14 +457,14 @@ class Database:
         """
         try:
             conn = self.get_connection()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # 총 세션 수
             cursor.execute("SELECT COUNT(*) as total FROM sessions")
             total_sessions = cursor.fetchone()["total"]
             
             # 완료된 세션 수
-            cursor.execute("SELECT COUNT(*) as completed FROM sessions WHERE is_completed = 1")
+            cursor.execute("SELECT COUNT(*) as completed FROM sessions WHERE is_completed = TRUE")
             completed_sessions = cursor.fetchone()["completed"]
             
             # 사전 등록 수
@@ -492,4 +495,3 @@ class Database:
 
 # 전역 데이터베이스 인스턴스
 db = Database()
-
