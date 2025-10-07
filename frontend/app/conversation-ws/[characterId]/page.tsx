@@ -814,11 +814,6 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
                 ? "처리 중..."
                 : "버튼을 눌러 말하기"}
             </p>
-            {!audioInitialized && turnCount === 0 && (
-              <p className="text-xs text-yellow-400/80 mt-2">
-                💡 모바일에서는 첫 번째 녹음 시 오디오가 활성화됩니다
-              </p>
-            )}
           </div>
         </div>
       </div>
