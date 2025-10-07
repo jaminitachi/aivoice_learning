@@ -242,14 +242,14 @@ class Database:
         사용자가 이전에 대화를 완료한 적이 있는지 확인 (영구 차단)
         
         Args:
-            user_ip: 사용자 IP 주소
+            user_ip: 사용자 IP 주소 (참고용, 차단에는 사용 안 함)
             fingerprint: 브라우저 지문
         
         Returns:
             True: 이미 완료한 적 있음 (차단), False: 처음이거나 미완료 (허용)
         
         설명:
-            - fingerprint OR user_ip 중 하나라도 일치하면 차단
+            - fingerprint만 사용하여 차단 (IP는 공유될 수 있으므로 사용 안 함)
             - is_completed = TRUE인 세션만 체크
             - 캐릭터 구분 없이 아무 캐릭터나 1번이라도 대화했으면 전체 차단
             - 영구 차단 (날짜 제한 없음)
@@ -258,50 +258,41 @@ class Database:
             conn = self.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # fingerprint와 user_ip 둘 다 없으면 체크 불가 (허용)
-            if not fingerprint and not user_ip:
-                print(f"⚠️  Fingerprint와 IP 모두 없음 - 기본 허용")
+            # fingerprint가 없으면 체크 불가 (허용)
+            if not fingerprint:
+                print(f"⚠️  Fingerprint 없음 - 기본 허용 (IP만으로는 차단하지 않음)")
                 conn.close()
                 return False
             
-            # SQL 쿼리 동적 생성
-            conditions = []
-            params = []
-            
-            if fingerprint:
-                conditions.append("fingerprint = %s")
-                params.append(fingerprint)
-            
-            if user_ip:
-                conditions.append("user_ip = %s")
-                params.append(user_ip)
-            
-            # OR 조건으로 연결
-            where_clause = f"({' OR '.join(conditions)})"
-            
-            # ✅ character_id 조건 제거 - 모든 캐릭터 포함
-            # 완료된 세션이 1개라도 있으면 차단
-            query = f"""
-                SELECT session_id, character_id, end_time
+            # ✅ Fingerprint만으로 체크 (IP는 사용하지 않음)
+            query = """
+                SELECT session_id, character_id, end_time, user_ip
                 FROM sessions
-                WHERE {where_clause}
+                WHERE fingerprint = %s
                 AND is_completed = TRUE
                 ORDER BY end_time DESC
                 LIMIT 1
             """
             
-            cursor.execute(query, tuple(params))
+            cursor.execute(query, (fingerprint,))
             result = cursor.fetchone()
             conn.close()
             
             if result:
                 # 완료된 세션이 있으면 차단
                 completed_character = result["character_id"]
-                print(f"🚫 영구 차단: 이미 '{completed_character}' 캐릭터와 대화 완료 - FP: {fingerprint[:8] if fingerprint else 'N/A'}..., IP: {user_ip}")
+                previous_ip = result["user_ip"]
+                print(f"🚫 영구 차단: 이미 '{completed_character}' 캐릭터와 대화 완료")
+                print(f"   - 현재 FP: {fingerprint[:16]}...")
+                print(f"   - 이전 IP: {previous_ip}, 현재 IP: {user_ip}")
+                if previous_ip != user_ip:
+                    print(f"   ℹ️  IP는 다르지만 Fingerprint가 일치하여 차단")
                 return True
             else:
                 # 완료된 세션이 없으면 허용
-                print(f"✅ 접근 허용: 첫 대화 - FP: {fingerprint[:8] if fingerprint else 'N/A'}..., IP: {user_ip}")
+                print(f"✅ 접근 허용: 첫 대화")
+                print(f"   - FP: {fingerprint[:16]}...")
+                print(f"   - IP: {user_ip}")
                 return False
                 
         except Exception as e:
