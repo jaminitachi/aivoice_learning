@@ -119,6 +119,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const isSessionCompletedRef = useRef(false); // closure 문제 방지용 ref
+  const difficultySelectedRef = useRef(false); // 난이도 선택 여부 추적 (즉시 반영)
 
   // 오디오 스트리밍 관련
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -261,7 +262,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         }
 
         // 난이도 선택 모달 표시 요청 (한 번만)
-        if (data.request_difficulty && !selectedDifficulty) {
+        if (data.request_difficulty && !difficultySelectedRef.current) {
           setShowDifficultyModal(true);
         }
         break;
@@ -562,6 +563,9 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
 
   // 난이도 선택 처리
   const handleDifficultySelect = async (difficulty: string) => {
+    // 즉시 플래그 설정 (재시도 방지)
+    difficultySelectedRef.current = true;
+
     setSelectedDifficulty(difficulty);
     setShowDifficultyModal(false);
 
