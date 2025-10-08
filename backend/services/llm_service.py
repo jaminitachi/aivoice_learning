@@ -94,6 +94,98 @@ Return ONLY the cleaned text, nothing else."""
         print(f"⚠️ STT 정제 중 오류 (원본 반환): {e}")
         return text
 
+async def generate_suggested_responses(
+    conversation_history: list,
+    character_name: str,
+    difficulty: str
+) -> list:
+    """
+    대화 맥락을 기반으로 사용자가 사용할 수 있는 3가지 추천 멘트를 생성합니다.
+    
+    Args:
+        conversation_history: 현재까지의 대화 히스토리
+        character_name: 대화 상대 캐릭터 이름
+        difficulty: 난이도 (beginner, intermediate, advanced)
+    
+    Returns:
+        3개의 추천 멘트 리스트
+    """
+    try:
+        # 대화 히스토리를 텍스트로 변환
+        history_text = ""
+        for msg in conversation_history[-6:]:  # 최근 6개 메시지만 사용
+            speaker = "You" if msg["speaker"] == "user" else character_name
+            history_text += f"{speaker}: {msg['text']}\n"
+        
+        # 난이도별 지시사항
+        difficulty_instructions = {
+            "beginner": "Use VERY simple words that 10-year-old children understand. NO idioms, NO phrasal verbs.",
+            "intermediate": "Use high school level vocabulary. Clear and straightforward language.",
+            "advanced": "Use natural, fluent English with college-level vocabulary."
+        }
+        
+        vocab_instruction = difficulty_instructions.get(difficulty, difficulty_instructions["intermediate"])
+        
+        prompt = f"""Based on this conversation, suggest 3 short, natural responses the user could say next.
+
+Conversation so far:
+{history_text}
+
+Requirements:
+- Each response should be 5-10 words maximum
+- Make them natural and conversational
+- Vary the responses (question, statement, follow-up)
+- {vocab_instruction}
+- Return ONLY a JSON array of 3 strings, nothing else
+
+Example format: ["Response 1", "Response 2", "Response 3"]"""
+
+        response = await client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that generates natural conversation suggestions. Return only valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=150,
+            temperature=0.8
+        )
+        
+        suggestions_text = response.choices[0].message.content.strip()
+        
+        # JSON 파싱
+        import json
+        import re
+        
+        # JSON 배열만 추출 (혹시 다른 텍스트가 포함되어 있을 경우)
+        json_match = re.search(r'\[.*\]', suggestions_text, re.DOTALL)
+        if json_match:
+            suggestions = json.loads(json_match.group())
+        else:
+            suggestions = json.loads(suggestions_text)
+        
+        # 3개가 아니면 조정
+        if len(suggestions) < 3:
+            suggestions.extend(["Tell me more", "That's interesting", "What about you?"][:3-len(suggestions)])
+        
+        return suggestions[:3]
+        
+    except Exception as e:
+        print(f"⚠️ 추천 멘트 생성 실패: {e}")
+        # 기본 추천 멘트 반환
+        default_suggestions = {
+            "beginner": ["I like that!", "Tell me more.", "What about you?"],
+            "intermediate": ["That's interesting.", "I see what you mean.", "How do you feel about it?"],
+            "advanced": ["That's a great point.", "I hadn't thought of it that way.", "What's your take on this?"]
+        }
+        return default_suggestions.get(difficulty, default_suggestions["intermediate"])
+
+
 async def get_llm_response(user_text: str, system_prompt: str, conversation_history: list = None) -> str:
     """
     OpenRouter를 통해 gpt-5-chat 모델을 호출하여 AI 응답을 생성합니다.

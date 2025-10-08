@@ -22,6 +22,59 @@ from services.session_service import session_manager
 from database import db
 
 
+# --- 난이도별 프롬프트 생성 함수 ---
+def get_difficulty_instruction(difficulty: str) -> str:
+    """
+    난이도에 따른 어휘 수준 지시사항을 반환합니다.
+    
+    Args:
+        difficulty: "beginner", "intermediate", "advanced" 중 하나
+        
+    Returns:
+        난이도에 맞는 지시사항 텍스트
+    """
+    difficulty_instructions = {
+        "beginner": """VOCABULARY LEVEL - BEGINNER (초급):
+- Use ONLY very basic, everyday words that 10-year-old children understand
+- Examples: happy, sad, eat, play, friend, house, school
+- NEVER use idioms, metaphors, or figurative language
+- NEVER use phrasal verbs (like "hang out", "come up with")
+- Keep sentences very short and simple
+- Avoid any complex expressions""",
+        
+        "intermediate": """VOCABULARY LEVEL - INTERMEDIATE (중급):
+- Use high school level vocabulary only
+- Common words used in everyday conversation
+- AVOID idioms and figurative expressions
+- AVOID uncommon metaphors
+- Use clear, literal language
+- Keep expressions straightforward""",
+        
+        "advanced": """VOCABULARY LEVEL - ADVANCED (고급):
+- Use natural, fluent English
+- College-level vocabulary is acceptable
+- You may use common idioms sparingly
+- Express ideas naturally as a native speaker would"""
+    }
+    
+    return difficulty_instructions.get(difficulty, difficulty_instructions["intermediate"])
+
+
+def apply_difficulty_to_prompt(base_prompt: str, difficulty: str) -> str:
+    """
+    기본 system_prompt에 난이도 지시사항을 추가합니다.
+    
+    Args:
+        base_prompt: 캐릭터의 기본 system prompt
+        difficulty: 선택된 난이도
+        
+    Returns:
+        난이도가 적용된 system prompt
+    """
+    difficulty_instruction = get_difficulty_instruction(difficulty)
+    return f"{base_prompt}\n\n{difficulty_instruction}"
+
+
 # --- Emotion 분석 함수 ---
 def analyze_emotion_from_text(text: str) -> str:
     """
@@ -109,8 +162,8 @@ characters_data = [
         "interactions": "1.7",
         "likes": "56",
         "voice_id": "asDeXBMC8hUkhqqL7agO",  # Josh - 따뜻한 미국 남성 목소리
-        "init_message": "Hey there! Come on in and have a seat. How's your day going? I thought we could just chat today, no pressure. What's been on your mind lately?",
-        "system_prompt": "You are Jeongsu, a 26-year-old substitute math teacher who genuinely cares about his students. You speak in a warm, encouraging tone and use American English. While you can discuss academics, you're more interested in having casual, supportive conversations that help students feel comfortable. You occasionally make dad jokes to lighten the mood. You're a good listener and ask thoughtful follow-up questions. Keep responses brief (2-3 sentences) and natural, as if chatting during office hours. Show genuine interest in the student's day and life. IMPORTANT: Use simple, high school level vocabulary that's easy to understand for English learners."
+        "init_message": "Hey! Come on in. How's your day?",
+        "system_prompt": "You are Jeongsu, a 26-year-old substitute math teacher who genuinely cares about his students. You speak in a warm, encouraging tone and use American English. While you can discuss academics, you're more interested in having casual, supportive conversations that help students feel comfortable. You occasionally make dad jokes to lighten the mood. You're a good listener and ask thoughtful follow-up questions. Keep responses brief (2-3 sentences) and natural, as if chatting during office hours. Show genuine interest in the student's day and life."
     },
     {
         "id": "Subin",
@@ -129,8 +182,8 @@ characters_data = [
         "interactions": "3.4",
         "likes": "78",
         "voice_id": "pVnrL6sighQX7hVz89cp",  # Adam - 전문적인 미국 남성 목소리
-        "init_message": "Oh hey! Mind if I join you? These tech conferences can be pretty overwhelming, right? What brings you here today?",
-        "system_prompt": "You are Subin, a 35-year-old experienced Engineer from Silicon Valley. You speak professional but conversational American English. You're direct, insightful, and occasionally sarcastic in a friendly way. You enjoy sharing real-world business scenarios and asking thought-provoking questions about career and leadership. Keep responses concise (2-3 sentences) as if chatting during a coffee break at a tech conference. IMPORTANT: Use simple, high school level vocabulary that's easy to understand for English learners. Avoid complex business jargon and use everyday words instead."
+        "init_message": "Hey! Mind if I join you? What brings you here?",
+        "system_prompt": "You are Subin, a 35-year-old experienced Engineer from Silicon Valley. You speak professional but conversational American English. You're direct, insightful, and occasionally sarcastic in a friendly way. You enjoy sharing real-world business scenarios and asking thought-provoking questions about career and leadership. Keep responses concise (2-3 sentences) as if chatting during a coffee break at a tech conference."
     },
     {
         "id": "jihoon",
@@ -149,8 +202,8 @@ characters_data = [
         "interactions": "9.8",
         "likes": "156",
         "voice_id": "UpphzPau5vxibPYV2NeV",  # Antoni - 친근한 영국 남성 목소리
-        "init_message": "Oh! You recognized me, didn't you? Please don't make it obvious though! Are you traveling somewhere fun today?",
-        "system_prompt": "You are Jihoon, a 21-year-old popular K-pop idol who just ran into the user at an airport lounge. You speak fluent American English with a slight Korean accent, mixing casual and polite tones. Despite being famous, you're humble, friendly, and genuinely interested in talking to people. You're wearing a baseball cap and hoodie, trying to be low-key but still approachable. You enjoy talking about music, travel, food, and everyday life. Keep responses warm and conversational (2-3 sentences), like chatting with a new friend you just met by chance. Show curiosity about the user and share relatable stories. Be charming but not overly flirtatious. IMPORTANT: Use simple, high school level vocabulary that's easy to understand for English learners."
+        "init_message": "Oh! You recognized me? Please keep it quiet... Where are you going?",
+        "system_prompt": "You are Jihoon, a 21-year-old popular K-pop idol who just ran into the user at an airport lounge. You speak fluent American English with a slight Korean accent, mixing casual and polite tones. Despite being famous, you're humble, friendly, and genuinely interested in talking to people. You're wearing a baseball cap and hoodie, trying to be low-key but still approachable. You enjoy talking about music, travel, food, and everyday life. Keep responses warm and conversational (2-3 sentences), like chatting with a new friend you just met by chance. Show curiosity about the user and share relatable stories. Be charming but not overly flirtatious."
     },
     {
         "id": "junhyeok",
@@ -169,8 +222,8 @@ characters_data = [
         "interactions": "8.9",
         "likes": "142",
         "voice_id": "DMyrgzQFny3JI1Y1paM5",  # Drew - 깊고 성숙한 남성 목소리 (섹시하고 자신감 있음)
-        "init_message": "You've been staring for a while... I love it. how was your day? Is it great? or ... terrible?",
-        "system_prompt": "You are Junhyeok, a 28-year-old mysterious man sitting alone at a rooftop bar. You speak American English with a deep, confident voice. You're direct, slightly cynical, but surprisingly honest once someone earns your attention. You don't waste words - you're blunt and straightforward. Despite your tough exterior, you have a philosophical side and occasionally show unexpected warmth. You've lived through some rough times and it shows in your worldview. Keep responses short and impactful (2-3 sentences max), like someone who's seen too much to play games. Use casual, sometimes edgy language. Show subtle interest in the user without being overly friendly. You're intriguing, not intimidating. IMPORTANT: Use simple, high school level vocabulary that's easy to understand for English learners."
+        "init_message": "Been staring for a while... Rough day?",
+        "system_prompt": "You are Junhyeok, a 28-year-old mysterious man sitting alone at a rooftop bar. You speak American English with a deep, confident voice. You're direct, slightly cynical, but surprisingly honest once someone earns your attention. You don't waste words - you're blunt and straightforward. Despite your tough exterior, you have a philosophical side and occasionally show unexpected warmth. You've lived through some rough times and it shows in your worldview. Keep responses short and impactful (2-3 sentences max), like someone who's seen too much to play games. Use casual, sometimes edgy language. Show subtle interest in the user without being overly friendly. You're intriguing, not intimidating."
     }
 ]
 
@@ -505,13 +558,17 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
     websocket_id = str(id(websocket))
     session = session_manager.create_session(character_id, websocket_id)
     
-    # ✅ 5. 데이터베이스에 세션 기록 (fingerprint 포함)
+    # 난이도는 init 메시지에서 받을 예정 (기본값: intermediate)
+    session.difficulty = "intermediate"
+    
+    # ✅ 5. 데이터베이스에 세션 기록 (fingerprint 포함, 난이도는 나중에 업데이트)
     db.create_session(
         session_id=session.session_id,
         character_id=character_id,
         user_ip=client_ip,
         user_agent=user_agent,
-        fingerprint=fingerprint
+        fingerprint=fingerprint,
+        difficulty="intermediate"  # 기본값, 나중에 업데이트됨
     )
     
     # 최대 턴 수 설정 (인스타그램 광고용: 10턴)
@@ -540,63 +597,25 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
             await websocket.close()
             return
         
-        system_prompt = selected_character["system_prompt"]
+        base_system_prompt = selected_character["system_prompt"]
         character_name = selected_character["name"]
         character_image_path = selected_character["imageUrl"]
         character_voice_id = selected_character.get("voice_id")
         character_emotion_images = selected_character.get("emotion_images", {})
         init_message = selected_character.get("init_message")
         
-        # 연결 성공 메시지
+        # 연결 성공 메시지 (난이도 선택 요청 포함)
         await websocket.send_json({
             "type": "connected",
             "character_id": character_id,
             "character_name": character_name,
             "session_id": session.session_id,
             "max_turns": MAX_TURNS,
-            "init_message": init_message
+            "init_message": init_message,
+            "request_difficulty": True  # 프론트엔드에 난이도 선택 모달 표시 요청
         })
         
-        # 초기 메시지를 음성으로 변환하여 전송
-        if init_message and character_voice_id:
-            print(f"\n{'🎤'*30}")
-            print(f"🔊 초기 메시지 음성 생성 중...")
-            print(f"   메시지: {init_message}")
-            print(f"   목소리: {character_voice_id}")
-            print(f"{'🎤'*30}\n")
-            
-            # 초기 메시지를 대화 히스토리에 추가
-            session.add_message("ai", init_message)
-            print(f"📝 초기 메시지를 대화 히스토리에 추가: {init_message[:50]}...")
-            
-            # 초기 메시지는 항상 neutral 이미지 사용 (기본 이미지)
-            init_emotion = "neutral"
-            init_image_url = character_emotion_images.get(init_emotion, character_image_path)
-            print(f"😊 초기 메시지는 기본 이미지 사용: {init_emotion} -> {init_image_url}")
-            
-            await websocket.send_json({
-                "type": "character_image",
-                "image_url": init_image_url,
-                "emotion": init_emotion
-            })
-            
-            # TTS 스트리밍 시작
-            await websocket.send_json({"type": "init_audio_stream_start"})
-            
-            # 오디오 청크를 실시간으로 전송
-            async for audio_chunk in elevenlabs_service.convert_text_to_speech_websocket(
-                init_message, 
-                character_voice_id
-            ):
-                chunk_base64 = base64.b64encode(audio_chunk).decode('utf-8')
-                await websocket.send_json({
-                    "type": "init_audio_chunk",
-                    "data": chunk_base64
-                })
-            
-            # 스트리밍 완료 신호
-            await websocket.send_json({"type": "init_audio_stream_end"})
-            print(f"✅ 초기 메시지 음성 전송 완료\n")
+        # 초기 메시지 TTS는 난이도 선택 후 init 메시지에서 처리됨
         
         # 메시지 수신 루프
         while True:
@@ -648,6 +667,71 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                         print(f"✅ Fingerprint DB 업데이트: {fingerprint[:8]}...")
                     except Exception as e:
                         print(f"⚠️ Fingerprint 업데이트 실패: {e}")
+                
+                # ✅ 난이도 수신
+                received_difficulty = data.get("difficulty")
+                if received_difficulty and received_difficulty in ["beginner", "intermediate", "advanced"]:
+                    session.difficulty = received_difficulty
+                    print(f"📚 난이도 설정: {received_difficulty}")
+                    
+                    # DB 업데이트 (난이도 저장)
+                    try:
+                        conn = db.get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE sessions SET difficulty = %s WHERE session_id = %s",
+                            (received_difficulty, session.session_id)
+                        )
+                        conn.commit()
+                        conn.close()
+                        print(f"✅ 난이도 DB 업데이트: {received_difficulty}")
+                    except Exception as e:
+                        print(f"⚠️ 난이도 업데이트 실패: {e}")
+                    
+                    # 난이도가 적용된 system_prompt 생성
+                    system_prompt = apply_difficulty_to_prompt(base_system_prompt, session.difficulty)
+                    
+                    # 초기 메시지를 음성으로 변환하여 전송 (난이도 선택 후)
+                    if init_message and character_voice_id:
+                        print(f"\n{'🎤'*30}")
+                        print(f"🔊 초기 메시지 음성 생성 중...")
+                        print(f"   메시지: {init_message}")
+                        print(f"   목소리: {character_voice_id}")
+                        print(f"   난이도: {session.difficulty}")
+                        print(f"{'🎤'*30}\n")
+                        
+                        # 초기 메시지를 대화 히스토리에 추가
+                        session.add_message("ai", init_message)
+                        print(f"📝 초기 메시지를 대화 히스토리에 추가: {init_message[:50]}...")
+                        
+                        # 초기 메시지는 항상 neutral 이미지 사용 (기본 이미지)
+                        init_emotion = "neutral"
+                        init_image_url = character_emotion_images.get(init_emotion, character_image_path)
+                        print(f"😊 초기 메시지는 기본 이미지 사용: {init_emotion} -> {init_image_url}")
+                        
+                        await websocket.send_json({
+                            "type": "character_image",
+                            "image_url": init_image_url,
+                            "emotion": init_emotion
+                        })
+                        
+                        # TTS 스트리밍 시작
+                        await websocket.send_json({"type": "init_audio_stream_start"})
+                        
+                        # 오디오 청크를 실시간으로 전송
+                        async for audio_chunk in elevenlabs_service.convert_text_to_speech_websocket(
+                            init_message, 
+                            character_voice_id
+                        ):
+                            chunk_base64 = base64.b64encode(audio_chunk).decode('utf-8')
+                            await websocket.send_json({
+                                "type": "init_audio_chunk",
+                                "data": chunk_base64
+                            })
+                        
+                        # 스트리밍 완료 신호
+                        await websocket.send_json({"type": "init_audio_stream_end"})
+                        print(f"✅ 초기 메시지 음성 전송 완료\n")
                 
                 continue  # init 메시지는 여기서 끝
             
@@ -743,7 +827,9 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                 if is_final_turn:
                     print(f"🎉 [세션 완료] {MAX_TURNS}턴 도달! 마무리 멘트 생성 중...")
                     # 마무리 멘트 생성 (대화 히스토리 포함)
-                    closing_prompt = system_prompt + "\n\nIMPORTANT: This is the end of our conversation (10 turns completed). Please provide a warm closing message in 2-3 sentences, thanking the user for the practice and encouraging them to keep learning English."
+                    # 난이도가 적용된 system_prompt 사용
+                    current_system_prompt = apply_difficulty_to_prompt(base_system_prompt, session.difficulty)
+                    closing_prompt = current_system_prompt + "\n\nIMPORTANT: This is the end of our conversation (10 turns completed). Please provide a warm closing message in 2-3 sentences, thanking the user for the practice and encouraging them to keep learning English."
                     
                     print(f"\n[LLM INPUT - 마무리]")
                     print(f"  시스템 프롬프트: {closing_prompt[:100]}...")
@@ -758,7 +844,9 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     print(f"  현재 사용자 메시지: {user_text}")
                     
                     # 일반 응답 생성 (대화 히스토리 포함하여 맥락 유지)
-                    ai_text = await llm_service.get_llm_response(user_text, system_prompt, previous_history)
+                    # 난이도가 적용된 system_prompt 사용
+                    current_system_prompt = apply_difficulty_to_prompt(base_system_prompt, session.difficulty)
+                    ai_text = await llm_service.get_llm_response(user_text, current_system_prompt, previous_history)
                 
                 print(f"\n[LLM OUTPUT] AI 응답: {ai_text}")
                 
@@ -815,6 +903,25 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                 # 스트리밍 완료 신호
                 await websocket.send_json({"type": "audio_stream_end"})
                 print(f"[TTS 완료] 음성 전송 완료\n")
+                
+                # 추천 멘트 생성 (TTS 완료 후, 백그라운드)
+                async def generate_and_send_suggestions():
+                    try:
+                        suggestions = await llm_service.generate_suggested_responses(
+                            conversation_history=session.conversation_history,
+                            character_name=character_name,
+                            difficulty=session.difficulty
+                        )
+                        await websocket.send_json({
+                            "type": "suggested_responses",
+                            "suggestions": suggestions
+                        })
+                        print(f"💡 추천 멘트 전송: {suggestions}")
+                    except Exception as e:
+                        print(f"⚠️ 추천 멘트 생성/전송 실패: {e}")
+                
+                # 백그라운드로 실행
+                asyncio.create_task(generate_and_send_suggestions())
                 
                 # 백그라운드 평가 결과 저장 (non-blocking)
                 async def save_evaluation():

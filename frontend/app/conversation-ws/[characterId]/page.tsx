@@ -106,6 +106,12 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     null
   );
   const [audioInitialized, setAudioInitialized] = useState(false);
+  const [showDifficultyModal, setShowDifficultyModal] = useState(false);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(
+    null
+  );
+  const [suggestedResponses, setSuggestedResponses] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -176,15 +182,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         console.log("WebSocket connected");
         setConnectionStatus("connected");
 
-        // ✅ Fingerprint 생성 및 전송
-        const fingerprint = await generateFingerprint();
-        ws.send(
-          JSON.stringify({
-            type: "init",
-            fingerprint: fingerprint,
-          })
-        );
-        console.log("📤 Fingerprint 전송 완료");
+        // Fingerprint와 난이도는 난이도 선택 후 전송됨
       };
 
       ws.onmessage = async (event) => {
@@ -260,6 +258,11 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
               imageUrl: character?.imageUrl,
             },
           ]);
+        }
+
+        // 난이도 선택 모달 표시 요청
+        if (data.request_difficulty) {
+          setShowDifficultyModal(true);
         }
         break;
 
@@ -351,6 +354,14 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         setIsLoading(false);
         if (audioBuffersRef.current.length > 0) {
           playAudioStream();
+        }
+        break;
+
+      case "suggested_responses":
+        // 추천 멘트 수신
+        if (data.suggestions && Array.isArray(data.suggestions)) {
+          setSuggestedResponses(data.suggestions);
+          console.log("💡 추천 멘트 수신:", data.suggestions);
         }
         break;
 
@@ -546,6 +557,28 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+    }
+  };
+
+  // 난이도 선택 처리
+  const handleDifficultySelect = async (difficulty: string) => {
+    setSelectedDifficulty(difficulty);
+    setShowDifficultyModal(false);
+
+    console.log(`📚 난이도 선택: ${difficulty}`);
+
+    // Fingerprint 생성 후 난이도와 함께 전송
+    const fingerprint = await generateFingerprint();
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: "init",
+          fingerprint: fingerprint,
+          difficulty: difficulty,
+        })
+      );
+      console.log("📤 Fingerprint 및 난이도 전송 완료");
     }
   };
 
@@ -753,7 +786,51 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         </div>
 
         {/* 녹음 버튼 - 업그레이드된 디자인 */}
-        <div className="relative backdrop-blur-xl bg-white/5 border-t border-white/10 p-4">
+        <div className="relative backdrop-blur-xl bg-white/5 border-t border-white/10 p-3">
+          {/* 추천 멘트 영역 */}
+          {suggestedResponses.length > 0 && (
+            <div className="mb-3">
+              {/* 토글 버튼 */}
+              <button
+                onClick={() => setShowSuggestions(!showSuggestions)}
+                className="w-full flex items-center justify-center gap-2 py-2 text-purple-300 hover:text-purple-200 transition-colors text-sm"
+              >
+                <span>💡 추천 멘트 보기</span>
+                <span
+                  className={`transform transition-transform ${
+                    showSuggestions ? "rotate-180" : ""
+                  }`}
+                >
+                  ▼
+                </span>
+              </button>
+
+              {/* 추천 멘트 리스트 */}
+              {showSuggestions && (
+                <div className="mt-2 space-y-2 animate-fadeInUp">
+                  {suggestedResponses.map((suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        // 추천 멘트를 클릭하면 해당 텍스트를 복사하거나 표시
+                        navigator.clipboard.writeText(suggestion);
+                        alert(`복사되었습니다: "${suggestion}"`);
+                      }}
+                      className="w-full py-2 px-4 bg-gradient-to-r from-purple-600/20 to-blue-600/20 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-400/30 rounded-xl text-white text-sm text-left transition-all duration-200 hover:scale-[1.02]"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 구분선 */}
+          {suggestedResponses.length > 0 && (
+            <div className="border-t border-white/10 mb-3"></div>
+          )}
+
           <div className="flex justify-center items-center">
             {/* 녹음 중 웨이브 애니메이션 */}
             {isRecording && (
@@ -806,8 +883,8 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
           </div>
 
           {/* 힌트 텍스트 */}
-          <div className="mt-4 text-center">
-            <p className="text-sm text-purple-300/80">
+          <div className="mt-2 text-center">
+            <p className="text-xs text-purple-300/70">
               {isRecording
                 ? "녹음 중... 버튼을 눌러 종료"
                 : isLoading
@@ -817,6 +894,72 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
           </div>
         </div>
       </div>
+
+      {/* 난이도 선택 모달 */}
+      {showDifficultyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="relative w-full max-w-md mx-4 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-3xl border border-purple-400/30 shadow-2xl p-8 animate-fadeInUp">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-3xl blur-2xl opacity-50"></div>
+
+            <div className="relative">
+              <h2 className="text-2xl font-bold text-center mb-3 bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+                난이도를 선택하세요
+              </h2>
+              <p className="text-center text-purple-200 mb-8 text-sm">
+                영어 수준에 맞는 난이도를 선택하면
+                <br />더 효과적인 학습이 가능합니다
+              </p>
+
+              <div className="space-y-3">
+                {/* 초급 */}
+                <button
+                  onClick={() => handleDifficultySelect("beginner")}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-bold rounded-2xl shadow-lg transition-all duration-300 hover:scale-105 active:scale-95 text-left"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-lg">🌱 초급 (Beginner)</div>
+                      <div className="text-xs text-green-100 mt-1">
+                        아주 쉬운 단어로 천천히 대화해요
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* 중급 */}
+                <button
+                  onClick={() => handleDifficultySelect("intermediate")}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl shadow-lg transition-all duration-300 hover:scale-105 active:scale-95 text-left"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-lg">🎯 중급 (Intermediate)</div>
+                      <div className="text-xs text-blue-100 mt-1">
+                        고등학교 수준의 자연스러운 대화
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* 고급 */}
+                <button
+                  onClick={() => handleDifficultySelect("advanced")}
+                  className="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold rounded-2xl shadow-lg transition-all duration-300 hover:scale-105 active:scale-95 text-left"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-lg">🚀 고급 (Advanced)</div>
+                      <div className="text-xs text-purple-100 mt-1">
+                        원어민처럼 자유로운 표현으로
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 학습 완료 모달 */}
       {showCompletionModal && (

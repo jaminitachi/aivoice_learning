@@ -53,6 +53,7 @@ class Database:
                 user_ip TEXT,
                 user_agent TEXT,
                 fingerprint TEXT,
+                difficulty TEXT DEFAULT 'intermediate',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -96,7 +97,8 @@ class Database:
         character_id: str,
         user_ip: Optional[str] = None,
         user_agent: Optional[str] = None,
-        fingerprint: Optional[str] = None
+        fingerprint: Optional[str] = None,
+        difficulty: str = "intermediate"
     ) -> bool:
         """
         새로운 세션 생성
@@ -117,9 +119,9 @@ class Database:
             
             cursor.execute("""
                 INSERT INTO sessions 
-                (session_id, character_id, start_time, user_ip, user_agent, fingerprint)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (session_id, character_id, datetime.now(), user_ip, user_agent, fingerprint))
+                (session_id, character_id, start_time, user_ip, user_agent, fingerprint, difficulty)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (session_id, character_id, datetime.now(), user_ip, user_agent, fingerprint, difficulty))
             
             conn.commit()
             conn.close()
