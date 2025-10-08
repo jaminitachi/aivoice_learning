@@ -260,8 +260,8 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
           ]);
         }
 
-        // 난이도 선택 모달 표시 요청
-        if (data.request_difficulty) {
+        // 난이도 선택 모달 표시 요청 (한 번만)
+        if (data.request_difficulty && !selectedDifficulty) {
           setShowDifficultyModal(true);
         }
         break;
