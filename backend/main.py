@@ -75,6 +75,37 @@ def apply_difficulty_to_prompt(base_prompt: str, difficulty: str) -> str:
     return f"{base_prompt}\n\n{difficulty_instruction}"
 
 
+def get_initial_suggestions(difficulty: str) -> list:
+    """
+    초기 대화 시작을 위한 난이도별 추천 멘트를 반환합니다.
+    
+    Args:
+        difficulty: 선택된 난이도
+        
+    Returns:
+        3개의 추천 멘트 리스트
+    """
+    suggestions = {
+        "beginner": [
+            "I'm good, thanks!",
+            "Pretty good.",
+            "Not bad, how about you?"
+        ],
+        "intermediate": [
+            "I'm doing well, thanks for asking!",
+            "Pretty good, just a bit tired.",
+            "Not too bad. How about yourself?"
+        ],
+        "advanced": [
+            "I'm doing great, thanks! How about you?",
+            "Pretty good, though it's been a long day.",
+            "Can't complain. What brings you here?"
+        ]
+    }
+    
+    return suggestions.get(difficulty, suggestions["intermediate"])
+
+
 # --- Emotion 분석 함수 ---
 def analyze_emotion_from_text(text: str) -> str:
     """
@@ -222,7 +253,7 @@ characters_data = [
         "interactions": "8.9",
         "likes": "142",
         "voice_id": "DMyrgzQFny3JI1Y1paM5",  # Drew - 깊고 성숙한 남성 목소리 (섹시하고 자신감 있음)
-        "init_message": "Been staring for a while... Rough day?",
+        "init_message": "Hey pretty, how was your day?",
         "system_prompt": "You are Junhyeok, a 28-year-old mysterious man sitting alone at a rooftop bar. You speak American English with a deep, confident voice. You're direct, slightly cynical, but surprisingly honest once someone earns your attention. You don't waste words - you're blunt and straightforward. Despite your tough exterior, you have a philosophical side and occasionally show unexpected warmth. You've lived through some rough times and it shows in your worldview. Keep responses short and impactful (2-3 sentences max), like someone who's seen too much to play games. Use casual, sometimes edgy language. Show subtle interest in the user without being overly friendly. You're intriguing, not intimidating."
     }
 ]
@@ -690,6 +721,14 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     
                     # 난이도가 적용된 system_prompt 생성
                     system_prompt = apply_difficulty_to_prompt(base_system_prompt, session.difficulty)
+                    
+                    # 초기 추천 멘트 전송 (하드코딩된 값)
+                    initial_suggestions = get_initial_suggestions(session.difficulty)
+                    await websocket.send_json({
+                        "type": "suggested_responses",
+                        "suggestions": initial_suggestions
+                    })
+                    print(f"💡 초기 추천 멘트 전송: {initial_suggestions}")
                     
                     # 초기 메시지를 음성으로 변환하여 전송 (난이도 선택 후)
                     if init_message and character_voice_id:

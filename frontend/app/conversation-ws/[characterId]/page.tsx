@@ -362,6 +362,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         // 추천 멘트 수신
         if (data.suggestions && Array.isArray(data.suggestions)) {
           setSuggestedResponses(data.suggestions);
+          setShowSuggestions(true); // 자동으로 펼치기
           console.log("💡 추천 멘트 수신:", data.suggestions);
         }
         break;
