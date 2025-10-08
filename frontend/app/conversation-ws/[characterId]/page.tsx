@@ -811,11 +811,6 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
                   {suggestedResponses.map((suggestion, idx) => (
                     <button
                       key={idx}
-                      onClick={() => {
-                        // 추천 멘트를 클릭하면 해당 텍스트를 복사하거나 표시
-                        navigator.clipboard.writeText(suggestion);
-                        alert(`복사되었습니다: "${suggestion}"`);
-                      }}
                       className="w-full py-2 px-4 bg-gradient-to-r from-purple-600/20 to-blue-600/20 hover:from-purple-600/40 hover:to-blue-600/40 border border-purple-400/30 rounded-xl text-white text-sm text-left transition-all duration-200 hover:scale-[1.02]"
                     >
                       {suggestion}
