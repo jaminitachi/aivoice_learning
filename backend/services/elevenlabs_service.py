@@ -179,7 +179,10 @@ async def convert_speech_to_text(audio_bytes: bytes) -> str:
     _request_stats["total_requests"] += 1
     
     headers = {"xi-api-key": ELEVENLABS_API_KEY}
-    data = {"model_id": "scribe_v1"}
+    data = {
+        "model_id": "scribe_v1",
+        "language": "en"  # 영어로 강제 지정 (러시아어 등 오인식 방지)
+    }
     files = {"file": ("audio.webm", audio_bytes, "audio/webm")}
     
     # 세마포어로 동시 요청 수 제한

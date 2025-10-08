@@ -877,14 +877,15 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     
                     ai_text = await llm_service.get_llm_response(user_text, closing_prompt, previous_history)
                 else:
-                    print(f"\n[LLM INPUT - 일반 대화]")
-                    print(f"  시스템 프롬프트: {system_prompt[:100]}...")
-                    print(f"  히스토리 메시지 수: {len(previous_history)}개")
-                    print(f"  현재 사용자 메시지: {user_text}")
-                    
                     # 일반 응답 생성 (대화 히스토리 포함하여 맥락 유지)
                     # 난이도가 적용된 system_prompt 사용
                     current_system_prompt = apply_difficulty_to_prompt(base_system_prompt, session.difficulty)
+                    
+                    print(f"\n[LLM INPUT - 일반 대화]")
+                    print(f"  시스템 프롬프트: {current_system_prompt[:100]}...")
+                    print(f"  히스토리 메시지 수: {len(previous_history)}개")
+                    print(f"  현재 사용자 메시지: {user_text}")
+                    
                     ai_text = await llm_service.get_llm_response(user_text, current_system_prompt, previous_history)
                 
                 print(f"\n[LLM OUTPUT] AI 응답: {ai_text}")
