@@ -120,6 +120,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
   const wsRef = useRef<WebSocket | null>(null);
   const isSessionCompletedRef = useRef(false); // closure 문제 방지용 ref
   const difficultySelectedRef = useRef(false); // 난이도 선택 여부 추적 (즉시 반영)
+  const audioMimeTypeRef = useRef<string>("audio/webm"); // 사용 중인 오디오 코덱 저장
 
   // 오디오 스트리밍 관련
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -183,7 +184,22 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
         console.log("WebSocket connected");
         setConnectionStatus("connected");
 
-        // Fingerprint와 난이도는 난이도 선택 후 전송됨
+        // ✅ 즉시 Fingerprint 전송 (난이도는 기본값으로 먼저 전송)
+        try {
+          const fingerprint = await generateFingerprint();
+          ws.send(
+            JSON.stringify({
+              type: "init",
+              fingerprint: fingerprint,
+              difficulty: "intermediate", // 기본값
+            })
+          );
+          console.log(
+            "📤 Fingerprint 즉시 전송 완료 (기본 난이도: intermediate)"
+          );
+        } catch (error) {
+          console.error("❌ Fingerprint 전송 실패:", error);
+        }
       };
 
       ws.onmessage = async (event) => {
@@ -521,9 +537,22 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm;codecs=opus",
-      });
+      // ✅ 브라우저별 지원 코덱 확인 (iOS Safari 호환성)
+      let mimeType = "audio/webm;codecs=opus"; // 기본값 (Chrome, Firefox)
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        mimeType = "audio/webm;codecs=opus";
+      } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+        mimeType = "audio/mp4"; // iOS Safari
+      } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+        mimeType = "audio/webm";
+      } else {
+        console.warn("⚠️ 지원되는 오디오 코덱이 제한적입니다. 기본값 사용.");
+      }
+
+      console.log(`🎤 사용 중인 오디오 코덱: ${mimeType}`);
+      audioMimeTypeRef.current = mimeType; // ref에 저장
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
@@ -535,7 +564,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, {
-          type: "audio/webm",
+          type: audioMimeTypeRef.current, // 동적 mimeType 사용
         });
         await sendAudioToWebSocket(audioBlob);
 
@@ -550,7 +579,10 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
       setIsRecording(true);
     } catch (error) {
       console.error("녹음 시작 실패:", error);
-      alert("마이크 권한이 필요합니다.");
+
+      // 더 명확한 에러 메시지
+      const errorMessage = `마이크 권한이 필요합니다!\n\n📱 모바일: 설정 > Safari(또는 Chrome) > 마이크 권한 허용\n💻 PC: 브라우저 주소창의 마이크 아이콘을 클릭하여 허용해주세요.\n\n⚠️ HTTPS 연결에서만 마이크를 사용할 수 있습니다.`;
+      alert(errorMessage);
     }
   };
 
@@ -570,20 +602,17 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
     setSelectedDifficulty(difficulty);
     setShowDifficultyModal(false);
 
-    console.log(`📚 난이도 선택: ${difficulty}`);
+    console.log(`📚 난이도 재선택: ${difficulty}`);
 
-    // Fingerprint 생성 후 난이도와 함께 전송
-    const fingerprint = await generateFingerprint();
-
+    // ✅ 난이도 업데이트만 전송 (Fingerprint는 이미 전송됨)
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
-          type: "init",
-          fingerprint: fingerprint,
+          type: "update_difficulty",
           difficulty: difficulty,
         })
       );
-      console.log("📤 Fingerprint 및 난이도 전송 완료");
+      console.log("📤 난이도 업데이트 전송 완료");
     }
   };
 
@@ -891,6 +920,11 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
                 ? "처리 중..."
                 : "버튼을 눌러 말하기"}
             </p>
+            {!isRecording && !isLoading && connectionStatus === "connected" && (
+              <p className="text-[10px] text-purple-300/50 mt-1">
+                버튼을 누른 상태에서 말씀하세요
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -905,7 +939,7 @@ export default function ConversationWebSocketPage({ params }: ChatPageProps) {
               <h2 className="text-2xl font-bold text-center mb-3 bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
                 난이도를 선택하세요
               </h2>
-              <p className="text-center text-purple-200 mb-8 text-sm">
+              <p className="text-center text-purple-200 mb-6 text-sm">
                 영어 수준에 맞는 난이도를 선택하면
                 <br />더 효과적인 학습이 가능합니다
               </p>

@@ -570,6 +570,14 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
     user_agent = websocket.headers.get("user-agent", None)
     fingerprint = None  # 나중에 받을 예정
     
+    # 📊 사용자 이탈 추적 로깅
+    print(f"\n{'📊'*30}")
+    print(f"📊 [웹소켓 연결] 새로운 사용자 접속")
+    print(f"   - 캐릭터: {character_id}")
+    print(f"   - IP: {client_ip}")
+    print(f"   - User-Agent: {user_agent[:50]}..." if user_agent else "   - User-Agent: None")
+    print(f"{'📊'*30}\n")
+    
     # ✅ 2. 먼저 영구 차단 체크 (IP 기반으로 1차 체크)
     # fingerprint는 나중에 init 메시지로 받음
     if db.check_user_ever_completed(client_ip, None):
@@ -665,7 +673,7 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                 break
             
             if message_type == "init":
-                # ✅ Fingerprint 수신 (나중에 받음)
+                # ✅ Fingerprint 수신 (즉시 받음)
                 received_fingerprint = data.get("fingerprint")
                 if received_fingerprint and not fingerprint:
                     fingerprint = received_fingerprint
@@ -699,7 +707,7 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     except Exception as e:
                         print(f"⚠️ Fingerprint 업데이트 실패: {e}")
                 
-                # ✅ 난이도 수신
+                # ✅ 난이도 수신 (기본값 또는 사용자 선택)
                 received_difficulty = data.get("difficulty")
                 if received_difficulty and received_difficulty in ["beginner", "intermediate", "advanced"]:
                     session.difficulty = received_difficulty
@@ -730,7 +738,7 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     })
                     print(f"💡 초기 추천 멘트 전송: {initial_suggestions}")
                     
-                    # 초기 메시지를 음성으로 변환하여 전송 (난이도 선택 후)
+                    # 초기 메시지를 음성으로 변환하여 전송
                     if init_message and character_voice_id:
                         print(f"\n{'🎤'*30}")
                         print(f"🔊 초기 메시지 음성 생성 중...")
@@ -773,6 +781,37 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                         print(f"✅ 초기 메시지 음성 전송 완료\n")
                 
                 continue  # init 메시지는 여기서 끝
+            
+            elif message_type == "update_difficulty":
+                # ✅ 난이도 업데이트 (사용자가 모달에서 다시 선택한 경우)
+                received_difficulty = data.get("difficulty")
+                if received_difficulty and received_difficulty in ["beginner", "intermediate", "advanced"]:
+                    session.difficulty = received_difficulty
+                    print(f"📚 난이도 재설정: {received_difficulty}")
+                    
+                    # DB 업데이트
+                    try:
+                        conn = db.get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            "UPDATE sessions SET difficulty = %s WHERE session_id = %s",
+                            (received_difficulty, session.session_id)
+                        )
+                        conn.commit()
+                        conn.close()
+                        print(f"✅ 난이도 DB 재업데이트: {received_difficulty}")
+                    except Exception as e:
+                        print(f"⚠️ 난이도 재업데이트 실패: {e}")
+                    
+                    # 업데이트된 난이도로 추천 멘트 재전송
+                    updated_suggestions = get_initial_suggestions(session.difficulty)
+                    await websocket.send_json({
+                        "type": "suggested_responses",
+                        "suggestions": updated_suggestions
+                    })
+                    print(f"💡 업데이트된 추천 멘트 전송: {updated_suggestions}")
+                
+                continue  # update_difficulty 메시지는 여기서 끝
             
             elif message_type == "audio":
                 # 음성 데이터 수신 (base64 인코딩)
@@ -1048,8 +1087,17 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
     
     except WebSocketDisconnect:
         print(f"\n❌ WebSocket 연결 끊김: {character_id}")
+        print(f"📊 [이탈 추적] 사용자 중도 이탈")
+        print(f"   - 세션 ID: {session.session_id if 'session' in locals() else 'N/A'}")
+        print(f"   - Fingerprint: {fingerprint[:16] if fingerprint else 'None'}...")
+        print(f"   - 완료 턴 수: {session.turn_count if 'session' in locals() else 0}/10")
+        print(f"   - IP: {client_ip}")
     except Exception as e:
         print(f"\n⚠️  WebSocket 오류: {e}")
+        print(f"📊 [오류 추적] 예외 발생으로 인한 연결 종료")
+        print(f"   - 세션 ID: {session.session_id if 'session' in locals() else 'N/A'}")
+        print(f"   - 오류 타입: {type(e).__name__}")
+        print(f"   - IP: {client_ip}")
         try:
             await websocket.send_json({
                 "type": "error",
@@ -1062,9 +1110,11 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
         # 세션 정리
         print(f"\n{'🧹'*30}")
         print(f"세션 정리 중...")
-        print(f"  세션 ID: {session.session_id}")
-        print(f"  최종 턴 수: {session.turn_count}")
-        print(f"  총 대화 메시지: {len(session.conversation_history)}개")
-        session_manager.remove_session(websocket_id)
+        if 'session' in locals():
+            print(f"  세션 ID: {session.session_id}")
+            print(f"  최종 턴 수: {session.turn_count}")
+            print(f"  총 대화 메시지: {len(session.conversation_history)}개")
+            print(f"  Fingerprint 여부: {'있음' if fingerprint else '없음'}")
+            session_manager.remove_session(websocket_id)
         print(f"✅ 세션 정리 완료!")
         print(f"{'🧹'*30}\n")
