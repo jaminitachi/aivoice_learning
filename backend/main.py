@@ -292,30 +292,28 @@ class BlockCheckRequest(BaseModel):
 @app.post("/api/check-block")
 async def check_block(block_request: BlockCheckRequest, request: Request):
     """
-    사용자가 이미 대화를 완료했는지 체크합니다.
-    홈 페이지에서 캐릭터 클릭 시 호출됩니다.
+    차단 로직 제거됨 - 항상 허용합니다.
+    (기존 프론트엔드 호환성을 위해 API는 유지)
     """
     # 실제 클라이언트 IP 추출
     client_ip = request.client.host if request.client else None
     
     print(f"\n{'🔍'*30}")
-    print(f"🔍 [차단 체크 API] 요청 수신")
+    print(f"🔍 [차단 체크 API] 요청 수신 (차단 로직 비활성화)")
     print(f"  - IP: {client_ip}")
     print(f"  - Fingerprint: {block_request.fingerprint[:16]}...")
     print(f"{'🔍'*30}\n")
     
-    is_blocked = db.check_user_ever_completed(
-        user_ip=client_ip,
-        fingerprint=block_request.fingerprint
-    )
+    # 차단 로직 제거 - 항상 허용
+    is_blocked = False
     
-    print(f"\n{'✅' if not is_blocked else '🚫'}{'='*30}")
-    print(f"{'✅ 접근 허용' if not is_blocked else '🚫 접근 차단'}")
+    print(f"\n{'✅'}{'='*30}")
+    print(f"✅ 접근 허용 (차단 없음)")
     print(f"{'='*30}\n")
     
     return {
         "is_blocked": is_blocked,
-        "message": "이미 서비스를 이용하셨습니다.\n\n무료 체험은 1회만 가능합니다." if is_blocked else None
+        "message": None
     }
 
 @app.get("/api/characters", response_model=List[Character])
@@ -578,22 +576,8 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
     print(f"   - User-Agent: {user_agent[:50]}..." if user_agent else "   - User-Agent: None")
     print(f"{'📊'*30}\n")
     
-    # ✅ 2. 먼저 영구 차단 체크 (IP 기반으로 1차 체크)
-    # fingerprint는 나중에 init 메시지로 받음
-    if db.check_user_ever_completed(client_ip, None):
-        try:
-            await websocket.send_json({
-                "type": "blocked",
-                "message": "이미 서비스를 이용하셨습니다.\n\n무료 체험은 1회만 가능합니다."
-            })
-            await asyncio.sleep(0.1)  # 메시지 전송 대기
-            await websocket.close()
-        except Exception as e:
-            print(f"⚠️ 차단 메시지 전송 실패 (연결 끊김): {e}")
-        print(f"🚫 영구 차단 (IP): {character_id} 시도 - IP: {client_ip}\n")
-        return
-    
-    # ✅ 4. 통과! 세션 생성
+    # ✅ 차단 로직 제거 - 모든 사용자 허용
+    # 세션 생성
     websocket_id = str(id(websocket))
     session = session_manager.create_session(character_id, websocket_id)
     
@@ -663,14 +647,7 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
             
             message_type = data.get("type")
             
-            # 세션 차단 여부 확인
-            if db.is_session_blocked(session.session_id):
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "이미 회화가 완료되었습니다. 더 이상 대화할 수 없습니다."
-                })
-                await websocket.close()
-                break
+            # 차단 로직 제거됨 - 세션 완료 후에도 계속 대화 가능
             
             if message_type == "init":
                 # ✅ Fingerprint 수신 (즉시 받음)
@@ -679,19 +656,7 @@ async def websocket_chat(websocket: WebSocket, character_id: str):
                     fingerprint = received_fingerprint
                     print(f"🔐 Fingerprint 수신: {fingerprint[:16]}...")
                     
-                    # 2차 차단 체크 (fingerprint 포함)
-                    if db.check_user_ever_completed(client_ip, fingerprint):
-                        try:
-                            await websocket.send_json({
-                                "type": "blocked",
-                                "message": "이미 서비스를 이용하셨습니다.\n\n무료 체험은 1회만 가능합니다."
-                            })
-                            await asyncio.sleep(0.1)  # 메시지 전송 대기
-                            await websocket.close()
-                        except Exception as e:
-                            print(f"⚠️ 차단 메시지 전송 실패 (연결 끊김): {e}")
-                        print(f"🚫 영구 차단 (Fingerprint): {character_id} - FP: {fingerprint[:8]}...\n")
-                        break
+                    # 차단 로직 제거됨 - 모든 사용자 허용
                     
                     # DB 업데이트 (fingerprint 저장)
                     try:

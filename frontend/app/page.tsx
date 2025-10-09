@@ -23,37 +23,6 @@ interface Character {
   likes?: number;
 }
 
-// Fingerprint 생성 함수
-async function generateFingerprint(): Promise<string> {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.textBaseline = "top";
-    ctx.font = "14px 'Arial'";
-    ctx.fillText("Browser Fingerprint", 2, 2);
-  }
-  const canvasData = canvas.toDataURL();
-
-  const fingerprint = {
-    userAgent: navigator.userAgent,
-    language: navigator.language,
-    platform: navigator.platform,
-    screenResolution: `${window.screen.width}x${window.screen.height}`,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    canvasFingerprint: canvasData.substring(0, 100),
-  };
-
-  const fingerprintString = JSON.stringify(fingerprint);
-  const encoder = new TextEncoder();
-  const data = encoder.encode(fingerprintString);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return hashHex;
-}
-
 export default function CharacterSelection() {
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -88,39 +57,9 @@ export default function CharacterSelection() {
 
   // 캐릭터 클릭 핸들러
   const handleCharacterClick = async (characterId: string) => {
-    try {
-      // Fingerprint 생성
-      const fingerprint = await generateFingerprint();
-
-      // 사용자 IP는 백엔드에서 자동으로 감지하므로, 임시로 빈 문자열 전송
-      // 실제로는 백엔드가 request IP를 사용함
-      const response = await fetch(API_ENDPOINTS.CHECK_BLOCK, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fingerprint: fingerprint,
-          user_ip: "", // 백엔드에서 실제 IP 추출
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.is_blocked) {
-        // 차단된 경우 알림 표시
-        alert(data.message);
-        console.log("🚫 차단됨:", data.message);
-      } else {
-        // 차단되지 않은 경우 WebSocket 대화 페이지로 이동
-        console.log("✅ 차단되지 않음 - 대화 페이지로 이동");
-        router.push(`/chat/${characterId}`);
-      }
-    } catch (err) {
-      console.error("❌ 차단 체크 오류:", err);
-      // 오류 발생 시 알림 후 차단 (보안을 위해)
-      alert("일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-    }
+    // 차단 로직 제거 - 바로 대화 페이지로 이동
+    console.log("✅ 대화 페이지로 이동:", characterId);
+    router.push(`/conversation-ws/${characterId}`);
   };
 
   // 로딩 및 에러 UI 개선
